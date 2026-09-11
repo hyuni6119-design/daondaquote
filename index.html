@@ -32,10 +32,181 @@
 .settings-control-row .auto-match-button{background:#2563eb!important;border-color:#2563eb!important}
 .addon-five-row{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:8px}
 .addon-five-row select{width:100%;min-width:0;height:40px;padding:4px;font-size:16px}
-.grid-cols-\[140px_1fr_1fr\]{display:grid;grid-template-columns:140px 1fr 1fr}
+.folder-pick-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media(max-width:900px){.folder-pick-grid{grid-template-columns:1fr}}
 </style>
 <body>
 <div id="root"></div>
+<script>
+/* 공유폴더: 사용자가 직접 고른 폴더를 기억하고(IndexedDB), 그 안의 파일을 열어보는 기능 */
+(function () {
+  var DB_NAME = "dgq_folders", STORE = "handles";
+  function openDB() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore(STORE); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }
+  function tx(mode, fn) {
+    return openDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var t = db.transaction(STORE, mode);
+        var req = fn(t.objectStore(STORE));
+        var value = null;
+        if (req) { req.onsuccess = function () { value = req.result === undefined ? null : req.result; }; }
+        t.oncomplete = function () { resolve(value); };
+        t.onerror = function () { reject(t.error); };
+        t.onabort = function () { reject(t.error); };
+      });
+    });
+  }
+  window.dgqFolderDB = {
+    set: function (key, handle) { return tx("readwrite", function (s) { return s.put(handle, key); }); },
+    get: function (key) { return tx("readonly", function (s) { return s.get(key); }); },
+    del: function (key) { return tx("readwrite", function (s) { return s.delete(key); }); }
+  };
+
+  function fmtSize(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(0) + " KB";
+    return (n / 1024 / 1024).toFixed(1) + " MB";
+  }
+
+  /* 고른 폴더의 내용을 화면 위 창으로 보여준다 (하위 폴더 이동 가능) */
+  window.dgqOpenFolderWindow = async function (rootHandle) {
+    var stack = [rootHandle];
+
+    var overlay = document.createElement("div");
+    overlay.setAttribute("data-dgq-folder", "1");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px";
+
+    var box = document.createElement("div");
+    box.style.cssText = "background:#fff;border-radius:10px;width:100%;max-width:720px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3);font-family:inherit";
+    overlay.appendChild(box);
+
+    var head = document.createElement("div");
+    head.style.cssText = "display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #e2e8f0";
+    box.appendChild(head);
+
+    var upBtn = document.createElement("button");
+    upBtn.type = "button"; upBtn.textContent = "⬆ 상위";
+    upBtn.style.cssText = "flex:none;border:1px solid #cbd5e1;background:#fff;border-radius:6px;padding:5px 10px;font-size:13px;cursor:pointer";
+    head.appendChild(upBtn);
+
+    var titleEl = document.createElement("strong");
+    titleEl.style.cssText = "flex:1;min-width:0;font-size:15px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+    head.appendChild(titleEl);
+
+    var closeBtn = document.createElement("button");
+    closeBtn.type = "button"; closeBtn.textContent = "닫기 ✕";
+    closeBtn.style.cssText = "flex:none;border:1px solid #cbd5e1;background:#fff;border-radius:6px;padding:5px 10px;font-size:13px;cursor:pointer";
+    head.appendChild(closeBtn);
+
+    var filter = document.createElement("input");
+    filter.placeholder = "파일 이름으로 찾기";
+    filter.style.cssText = "margin:10px 14px 0;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px";
+    box.appendChild(filter);
+
+    var listEl = document.createElement("div");
+    listEl.style.cssText = "overflow:auto;padding:8px 14px 14px;flex:1";
+    box.appendChild(listEl);
+
+    var footEl = document.createElement("div");
+    footEl.style.cssText = "padding:8px 14px;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b";
+    footEl.textContent = "파일을 누르면 내려받아 열립니다. 폴더는 눌러서 들어갈 수 있습니다.";
+    box.appendChild(footEl);
+
+    function close() {
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+    }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    document.addEventListener("keydown", onKey);
+    closeBtn.onclick = close;
+    overlay.onclick = function (e) { if (e.target === overlay) close(); };
+    upBtn.onclick = function () { if (stack.length > 1) { stack.pop(); render(); } };
+
+    var current = [];
+    function paint() {
+      var q = filter.value.trim().toLowerCase();
+      listEl.innerHTML = "";
+      var shown = current.filter(function (it) { return !q || it.name.toLowerCase().indexOf(q) >= 0; });
+      if (!shown.length) {
+        var empty = document.createElement("div");
+        empty.style.cssText = "padding:24px 4px;color:#94a3b8;font-size:14px;text-align:center";
+        empty.textContent = current.length ? "찾는 이름의 파일이 없습니다." : "이 폴더는 비어 있습니다.";
+        listEl.appendChild(empty);
+        return;
+      }
+      shown.forEach(function (it) {
+        var row = document.createElement("button");
+        row.type = "button";
+        row.style.cssText = "display:flex;width:100%;align-items:center;gap:10px;padding:8px 6px;border:0;border-bottom:1px solid #f1f5f9;background:#fff;text-align:left;cursor:pointer;font-size:14px";
+        row.onmouseover = function () { row.style.background = "#f8fafc"; };
+        row.onmouseout = function () { row.style.background = "#fff"; };
+        var icon = document.createElement("span");
+        icon.textContent = it.kind === "directory" ? "📁" : "📄";
+        icon.style.cssText = "flex:none";
+        var nameEl = document.createElement("span");
+        nameEl.textContent = it.name;
+        nameEl.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#0f172a";
+        var metaEl = document.createElement("span");
+        metaEl.style.cssText = "flex:none;color:#94a3b8;font-size:12px";
+        row.appendChild(icon); row.appendChild(nameEl); row.appendChild(metaEl);
+        if (it.kind === "directory") {
+          metaEl.textContent = "폴더";
+          row.onclick = function () { stack.push(it.handle); render(); };
+        } else {
+          it.handle.getFile().then(function (f) { metaEl.textContent = fmtSize(f.size); }).catch(function () {});
+          row.onclick = function () {
+            it.handle.getFile().then(function (file) {
+              var url = URL.createObjectURL(file);
+              var a = document.createElement("a");
+              a.href = url; a.download = it.name;
+              document.body.appendChild(a); a.click(); a.remove();
+              setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+            }).catch(function (err) {
+              window.alert("파일을 열지 못했습니다: " + (err && err.message ? err.message : err));
+            });
+          };
+        }
+        listEl.appendChild(row);
+      });
+    }
+    filter.oninput = paint;
+
+    async function render() {
+      var dir = stack[stack.length - 1];
+      titleEl.textContent = stack.map(function (h) { return h.name; }).join(" / ");
+      upBtn.disabled = stack.length <= 1;
+      upBtn.style.opacity = stack.length <= 1 ? ".4" : "1";
+      listEl.innerHTML = "<div style='padding:24px 4px;color:#94a3b8;font-size:14px;text-align:center'>불러오는 중…</div>";
+      var items = [];
+      try {
+        for await (var entry of dir.values()) items.push({ name: entry.name, kind: entry.kind, handle: entry });
+      } catch (err) {
+        listEl.innerHTML = "";
+        var errEl = document.createElement("div");
+        errEl.style.cssText = "padding:24px 4px;color:#dc2626;font-size:14px;text-align:center";
+        errEl.textContent = "폴더를 읽지 못했습니다: " + (err && err.message ? err.message : err);
+        listEl.appendChild(errEl);
+        return;
+      }
+      items.sort(function (a, b) {
+        if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
+        return a.name.localeCompare(b.name, "ko");
+      });
+      current = items;
+      paint();
+    }
+
+    document.body.appendChild(overlay);
+    render();
+  };
+})();
+</script>
 <script>
 /**
  * @license React
@@ -2510,19 +2681,70 @@ function AdminPanel({
       return next;
     });
   };
+  const pickFolder = async key => {
+    if (typeof window.showDirectoryPicker !== "function") {
+      window.alert("이 브라우저는 폴더 선택을 지원하지 않습니다.\n크롬 또는 엣지에서 열어주세요.");
+      return;
+    }
+    try {
+      const handle = await window.showDirectoryPicker({ id: "dgq-" + key, mode: "read" });
+      await window.dgqFolderDB.set(key, handle);
+      updateFolderPath(key + "__folder", handle.name);
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      window.alert("폴더를 선택하지 못했습니다: " + (err && err.message ? err.message : err));
+    }
+  };
+  const clearFolder = async key => {
+    try { await window.dgqFolderDB.del(key); } catch (err) {}
+    updateFolderPath(key + "__folder", "");
+  };
+  const renderFolderPicker = (insurerK, type, label) => {
+    const key = insurerK + "_" + type;
+    const picked = folderPaths[key + "__folder"] || "";
+    return /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-2 min-w-0" },
+      /*#__PURE__*/React.createElement("span", { className: "w-12 shrink-0 text-xs text-slate-500" }, label),
+      /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        onClick: () => pickFolder(key),
+        className: "shrink-0 rounded bg-blue-600 px-2 py-1 text-xs font-bold text-white hover:bg-blue-700"
+      }, picked ? "변경" : "폴더 선택"),
+      /*#__PURE__*/React.createElement("span", {
+        className: "truncate text-xs " + (picked ? "font-medium text-slate-800" : "text-slate-400"),
+        title: picked
+      }, picked ? "📁 " + picked : "선택 안 됨"),
+      picked && /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        onClick: () => clearFolder(key),
+        className: "shrink-0 rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+      }, "해제"));
+  };
+  const renderFolderSlot = (insurerK, type, label) => {
+    const key = insurerK + "_" + type;
+    return /*#__PURE__*/React.createElement("div", { className: "min-w-0" },
+      renderFolderPicker(insurerK, type, label),
+      /*#__PURE__*/React.createElement("input", {
+        className: "mt-1 w-full rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600",
+        placeholder: "경로 직접 입력 (선택)",
+        value: folderPaths[key] || "",
+        onChange: e => updateFolderPath(key, e.target.value)
+      }));
+  };
   const folderPathEditor = /*#__PURE__*/React.createElement("div", {
     className: "mt-4 rounded-lg border-2 border-blue-200 bg-blue-50 overflow-hidden"
   }, /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => setFolderPathsOpen(v => !v),
     className: "w-full flex items-center justify-between px-3 py-2 text-base font-bold text-blue-900 hover:bg-blue-100"
-  }, "공유폴더 경로 설정", /*#__PURE__*/React.createElement("span", { className: "text-sm" }, folderPathsOpen ? "닫기 ▲" : "열기 ▼")), folderPathsOpen && /*#__PURE__*/React.createElement("div", { className: "p-3 border-t border-blue-200" },
+  }, "공유폴더 설정", /*#__PURE__*/React.createElement("span", { className: "text-sm" }, folderPathsOpen ? "닫기 ▲" : "열기 ▼")), folderPathsOpen && /*#__PURE__*/React.createElement("div", { className: "p-3 border-t border-blue-200" },
+  /*#__PURE__*/React.createElement("p", { className: "mb-3 text-xs leading-relaxed text-slate-600" }, "‘폴더 선택’을 누르고 해당 보험사 폴더를 직접 고르면 그 폴더를 기억합니다. 이후 위쪽 ‘공유폴더 열기’ 버튼을 누르면 고른 폴더의 파일 목록이 바로 뜹니다."),
   Object.keys({ ...insurerDataStore, ...domesticInsurerDataStore }).map(k => /*#__PURE__*/React.createElement("div", {
     key: k,
-    className: "mb-2 grid grid-cols-[140px_1fr_1fr] items-center gap-2"
-  }, /*#__PURE__*/React.createElement("strong", { className: "text-sm text-slate-700" }, (insurerDataStore[k] || domesticInsurerDataStore[k])?.label || k),
-  /*#__PURE__*/React.createElement("input", { className: "w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm", placeholder: "국산차 경로", value: folderPaths[k + "_domestic"] || "", onChange: e => updateFolderPath(k + "_domestic", e.target.value) }),
-  /*#__PURE__*/React.createElement("input", { className: "w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm", placeholder: "수입차 경로", value: folderPaths[k + "_imported"] || "", onChange: e => updateFolderPath(k + "_imported", e.target.value) })))));
+    className: "mb-2 rounded border border-blue-200 bg-white p-2"
+  }, /*#__PURE__*/React.createElement("strong", { className: "mb-1 block text-sm text-slate-700" }, (insurerDataStore[k] || domesticInsurerDataStore[k])?.label || k),
+  /*#__PURE__*/React.createElement("div", { className: "folder-pick-grid" },
+    renderFolderSlot(k, "domestic", "국산차"),
+    renderFolderSlot(k, "imported", "수입차"))))));
   const highlightedRowRef = useRef(null);
   const highlightedCellTextareaRef = useRef(null);
   useEffect(() => {
@@ -7119,12 +7341,41 @@ function QuoteApp() {
     className: "px-4 py-1.5 rounded text-base font-medium " + (samsungCarCareMode ? "bg-blue-600 text-white" : "bg-white border border-slate-300 text-slate-600")
   }, "삼성카케어 접수"), /*#__PURE__*/React.createElement("button", {
     type: "button",
-    onClick: () => {
+    onClick: async () => {
       let paths = {};
       try { paths = JSON.parse(window.localStorage.getItem("dgq_folderPaths") || "{}"); } catch (e) {}
-      const raw = paths[(insurerKey || "DB") + "_" + (isImported ? "imported" : "domestic")] || "Z:\\다온다자동차유리\\2026년";
+      const folderKey = (insurerKey || "DB") + "_" + (isImported ? "imported" : "domestic");
+      try {
+        const handle = window.dgqFolderDB ? await window.dgqFolderDB.get(folderKey) : null;
+        if (handle) {
+          let perm = await handle.queryPermission({ mode: "read" });
+          if (perm !== "granted") perm = await handle.requestPermission({ mode: "read" });
+          if (perm === "granted") { await window.dgqOpenFolderWindow(handle); return; }
+        }
+      } catch (err) {}
+      if (!paths[folderKey]) {
+        window.alert("이 보험사·차종에 지정된 폴더가 없습니다.\n\n‘보험사별 표준자료 관리’ 화면의 ‘공유폴더 설정’에서 ‘폴더 선택’을 눌러 폴더를 먼저 지정해 주세요.");
+        return;
+      }
+      const raw = paths[folderKey];
       const fileUrl = "file:///" + raw.replace(/^([A-Za-z]):[\\/]/, "$1:/").replace(/\\/g, "/").replace(/^\/+/, "");
-      window.open(fileUrl, "_blank");
+      if (window.location.protocol === "file:") {
+        const a = document.createElement("a");
+        a.href = fileUrl;
+        a.target = "_blank";
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        return;
+      }
+      const guide = "브라우저 보안 정책 때문에 인터넷 주소로 열었을 때는 공유폴더를 바로 띄울 수 없습니다.\n\n경로: " + raw + "\n\n파일 탐색기를 열고(Win+E) 주소창에 붙여넣기(Ctrl+V) 하세요.";
+      const askManual = () => window.prompt("아래 경로를 복사해서(Ctrl+C) 파일 탐색기 주소창에 붙여넣으세요.", raw);
+      try {
+        navigator.clipboard.writeText(raw).then(() => window.alert("경로를 복사했습니다.\n\n" + guide)).catch(askManual);
+      } catch (e) {
+        askManual();
+      }
     },
     className: "no-print px-4 py-1.5 rounded text-base font-medium bg-white border border-blue-500 text-blue-700 hover:bg-blue-50 whitespace-nowrap"
   }, "공유폴더 열기"), (activeTab === "admin" || activeTab === "franchise") && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
