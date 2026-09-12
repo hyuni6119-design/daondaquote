@@ -1,0 +1,8 @@
+{
+  "name": "daonda-quote",
+  "productName": "다온다견적서",
+  "version": "1.0.0",
+  "description": "다온다자동차유리 보험사 견적서 자동생성기",
+  "main": "main.js",
+  "author": "다온다자동차유리"
+}

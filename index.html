@@ -2682,6 +2682,17 @@ function AdminPanel({
     });
   };
   const pickFolder = async key => {
+    if (window.daondaDesktop) {
+      try {
+        const chosen = await window.daondaDesktop.pickFolder();
+        if (!chosen) return;
+        updateFolderPath(key, chosen);
+        updateFolderPath(key + "__folder", chosen);
+      } catch (err) {
+        window.alert("폴더를 선택하지 못했습니다: " + (err && err.message ? err.message : err));
+      }
+      return;
+    }
     if (typeof window.showDirectoryPicker !== "function") {
       window.alert("이 브라우저는 폴더 선택을 지원하지 않습니다.\n크롬 또는 엣지에서 열어주세요.");
       return;
@@ -2738,7 +2749,7 @@ function AdminPanel({
     className: "w-full flex items-center justify-between px-3 py-2 text-base font-bold text-blue-900 hover:bg-blue-100"
   }, "공유폴더 설정", /*#__PURE__*/React.createElement("span", { className: "text-sm" }, folderPathsOpen ? "닫기 ▲" : "열기 ▼")), folderPathsOpen && /*#__PURE__*/React.createElement("div", { className: "p-3 border-t border-blue-200" },
   /*#__PURE__*/React.createElement("p", { className: "mb-2 text-xs leading-relaxed text-slate-600" }, "아래 칸에 폴더 경로를 붙여넣으면 ‘공유폴더 열기’ 버튼이 그 폴더를 바로 엽니다. 경로는 파일 탐색기에서 해당 폴더를 연 뒤 주소창을 클릭하고(Ctrl+L) 복사(Ctrl+C)하면 됩니다."),
-  /*#__PURE__*/React.createElement("label", { className: "mb-3 flex items-start gap-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-slate-700" },
+  !window.daondaDesktop && /*#__PURE__*/React.createElement("label", { className: "mb-3 flex items-start gap-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-slate-700" },
     /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
       className: "mt-0.5",
@@ -7356,6 +7367,16 @@ function QuoteApp() {
       try { paths = JSON.parse(window.localStorage.getItem("dgq_folderPaths") || "{}"); } catch (e) {}
       const folderKey = (insurerKey || "DB") + "_" + (isImported ? "imported" : "domestic");
       const raw = paths[folderKey];
+      // 0순위: 데스크톱 앱이면 윈도우 탐색기로 곧바로 연다
+      if (raw && window.daondaDesktop) {
+        try {
+          const failMsg = await window.daondaDesktop.openFolder(raw);
+          if (failMsg) window.alert("폴더를 열지 못했습니다.\n\n" + raw + "\n\n" + failMsg);
+        } catch (err) {
+          window.alert("폴더를 열지 못했습니다: " + (err && err.message ? err.message : err));
+        }
+        return;
+      }
       // 1순위: 탐색기 열기 도구가 설치돼 있으면 윈도우 탐색기 창으로 연다
       if (raw && paths.__useExplorer === "1") {
         try {
