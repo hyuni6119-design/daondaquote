@@ -1,0 +1,15 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\Classes\daonda]
+@="URL:DaonDa Folder"
+"URL Protocol"=""
+
+[HKEY_CURRENT_USER\Software\Classes\daonda\DefaultIcon]
+@="explorer.exe,0"
+
+[HKEY_CURRENT_USER\Software\Classes\daonda\shell]
+
+[HKEY_CURRENT_USER\Software\Classes\daonda\shell\open]
+
+[HKEY_CURRENT_USER\Software\Classes\daonda\shell\open\command]
+@="wscript.exe \"C:\\daonda\\daonda-open.vbs\" \"%1\""

@@ -2737,7 +2737,17 @@ function AdminPanel({
     onClick: () => setFolderPathsOpen(v => !v),
     className: "w-full flex items-center justify-between px-3 py-2 text-base font-bold text-blue-900 hover:bg-blue-100"
   }, "공유폴더 설정", /*#__PURE__*/React.createElement("span", { className: "text-sm" }, folderPathsOpen ? "닫기 ▲" : "열기 ▼")), folderPathsOpen && /*#__PURE__*/React.createElement("div", { className: "p-3 border-t border-blue-200" },
-  /*#__PURE__*/React.createElement("p", { className: "mb-3 text-xs leading-relaxed text-slate-600" }, "아래 칸에 폴더 경로를 붙여넣으면 ‘공유폴더 열기’ 버튼이 그 폴더를 바로 엽니다. 경로는 파일 탐색기에서 해당 폴더를 연 뒤 주소창을 클릭하고(Ctrl+L) 복사(Ctrl+C)하면 됩니다. ‘폴더 선택’ 버튼은 경로 없이 앱 안에서 파일 목록만 보고 싶을 때 쓰세요."),
+  /*#__PURE__*/React.createElement("p", { className: "mb-2 text-xs leading-relaxed text-slate-600" }, "아래 칸에 폴더 경로를 붙여넣으면 ‘공유폴더 열기’ 버튼이 그 폴더를 바로 엽니다. 경로는 파일 탐색기에서 해당 폴더를 연 뒤 주소창을 클릭하고(Ctrl+L) 복사(Ctrl+C)하면 됩니다."),
+  /*#__PURE__*/React.createElement("label", { className: "mb-3 flex items-start gap-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-slate-700" },
+    /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      className: "mt-0.5",
+      checked: folderPaths.__useExplorer === "1",
+      onChange: e => updateFolderPath("__useExplorer", e.target.checked ? "1" : "")
+    }),
+    /*#__PURE__*/React.createElement("span", null,
+      /*#__PURE__*/React.createElement("strong", null, "윈도우 탐색기 창으로 열기"),
+      " — 켜면 브라우저 탭 대신 진짜 탐색기 창이 뜹니다. 이 PC에 ‘탐색기 열기 설치’ 파일을 한 번 실행해 둔 경우에만 켜세요. 켜고도 아무 반응이 없으면 설치가 안 된 것이니 다시 끄시면 됩니다.")),
   Object.keys({ ...insurerDataStore, ...domesticInsurerDataStore }).map(k => /*#__PURE__*/React.createElement("div", {
     key: k,
     className: "mb-2 rounded border border-blue-200 bg-white p-2"
@@ -7346,7 +7356,22 @@ function QuoteApp() {
       try { paths = JSON.parse(window.localStorage.getItem("dgq_folderPaths") || "{}"); } catch (e) {}
       const folderKey = (insurerKey || "DB") + "_" + (isImported ? "imported" : "domestic");
       const raw = paths[folderKey];
-      // 1순위: 폴더 경로가 지정돼 있으면 그 폴더를 그대로 연다
+      // 1순위: 탐색기 열기 도구가 설치돼 있으면 윈도우 탐색기 창으로 연다
+      if (raw && paths.__useExplorer === "1") {
+        try {
+          const bytes = new TextEncoder().encode(raw);
+          let bin = "";
+          bytes.forEach(b => { bin += String.fromCharCode(b); });
+          const token = window.btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+          const a = document.createElement("a");
+          a.href = "daonda:" + token;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          return;
+        } catch (err) {}
+      }
+      // 2순위: 폴더 경로가 지정돼 있으면 그 폴더를 브라우저 탭으로 연다
       if (raw && window.location.protocol === "file:") {
         const fileUrl = "file:///" + raw.replace(/^([A-Za-z]):[\\/]/, "$1:/").replace(/\\/g, "/").replace(/^\/+/, "") + "/";
         const a = document.createElement("a");
