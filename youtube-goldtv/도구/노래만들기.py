@@ -48,6 +48,10 @@ def 보내기(주소, 키, 본문=None, 방식="POST"):
         "Authorization": f"Bearer {키}",
         "Content-Type": "application/json",
         "Accept": "application/json",
+        # 파이썬 기본 User-Agent 는 클라우드플레어가 1010 으로 막습니다.
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/140.0.0.0 Safari/537.36",
     })
     try:
         with request.urlopen(요청, timeout=60) as 응답:
