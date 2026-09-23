@@ -1,4 +1,7 @@
 # 비밀 정보는 절대 저장소에 올리지 않습니다.
 api키.json
 client_secret.json
+client_secret-*.json
 인증토큰.json
+인증토큰-*.json
+__pycache__/
