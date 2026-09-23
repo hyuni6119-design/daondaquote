@@ -43,6 +43,10 @@ from 채널 import 설정읽기, 인자붙이기
 사진본프로젝트 = "황주썸넬"        # 사진 한 장을 까는 방법을 가져올 곳
 소리확장자 = {".mp3", ".wav", ".m4a", ".aac", ".flac"}
 제목가로위치 = 0.55              # 곡 제목 가로 위치 (1.0 이 화면 오른쪽 끝)
+곡제목크기 = 11                  # 새로 만드는 곡 제목 글자 크기
+곡제목세로위치 = -0.62           # 화면 아래쪽 (−1.0 이 맨 아래)
+채널명후보 = {"불심명언", "황금주파수 TV", "황금주파수"}
+곡제목표시 = True                # `--채널` 설정이 덮어씁니다
 
 
 def 새아이디():
@@ -156,6 +160,70 @@ def 글자내용바꾸기(재료, 새글):
     재료["content"] = json.dumps(내용, ensure_ascii=False)
 
 
+def 곡제목트랙만들기(d, 글자트랙들):
+    """곡 제목을 띄울 글자 트랙을 새로 만들어 돌려줍니다.
+
+    채널명 글자를 본으로 삼습니다. 이미 만들어 둔 글꼴·색·테두리를 그대로
+    물려받으므로 화면이 튀지 않습니다. 자리는 화면 아래쪽 가운데로 잡고
+    크기는 채널명보다 조금 키웁니다.
+
+    `제목트랙["segments"][0]` 이 본보기 칸이 되어야 하므로 칸 하나를
+    넣어 둡니다. 부르는 쪽에서 곡 수만큼 복제해 갈아 끼웁니다.
+    """
+    본트랙 = None
+    for t in 글자트랙들:
+        if len(t["segments"]) != 1:
+            continue
+        재료 = next((m for m in d["materials"]["texts"]
+                  if m["id"] == t["segments"][0]["material_id"]), None)
+        if 재료 and json.loads(재료["content"])["text"].strip() in 채널명후보:
+            본트랙 = t
+            break
+    if 본트랙 is None:                       # 채널명을 못 찾으면 첫 트랙으로
+        본트랙 = 글자트랙들[0]
+
+    본칸 = copy.deepcopy(본트랙["segments"][0])
+    본재료 = next(m for m in d["materials"]["texts"]
+               if m["id"] == 본트랙["segments"][0]["material_id"])
+
+    재료 = copy.deepcopy(본재료)
+    재료["id"] = 새아이디()
+    재료["fixed_width"] = -1.0
+    재료["force_apply_line_max_width"] = False
+    내용 = json.loads(재료["content"])
+    for 스타일 in 내용.get("styles", []):
+        스타일["size"] = 곡제목크기
+    # 가운데 정렬로 둡니다. 채널명은 왼쪽 정렬이라 그대로 두면 제목이
+    # 화면 가운데에서 시작해 오른쪽으로 삐져나가 잘립니다.
+    내용["alignment"] = 1
+    재료["content"] = json.dumps(내용, ensure_ascii=False)
+    재료["alignment"] = 1
+    d["materials"]["texts"].append(재료)
+
+    본칸["id"] = 새아이디()
+    본칸["material_id"] = 재료["id"]
+    본칸["clip"]["transform"]["x"] = 0.0
+    본칸["clip"]["transform"]["y"] = 곡제목세로위치
+    본칸["clip"]["scale"] = {"x": 1.0, "y": 1.0}
+    본칸["target_timerange"] = {"start": 0, "duration": 1000000}
+    본칸["extra_material_refs"] = [
+        x for x in (재료복제(d, d, r) for r in 본칸.get("extra_material_refs", []))
+        if x]
+
+    새트랙 = {
+        "attribute": 0,
+        "flag": 0,
+        "id": 새아이디(),
+        "is_default_name": True,
+        "name": "",
+        "segments": [본칸],
+        "type": "text",
+    }
+    d["tracks"].append(새트랙)
+    글자트랙들.append(새트랙)
+    return 새트랙
+
+
 def 만들기(이름, 배경, 곡폴더):
     본 = 캡컷루트 / 본프로젝트
     사진본 = 캡컷루트 / 사진본프로젝트
@@ -267,6 +335,14 @@ def 만들기(이름, 배경, 곡폴더):
                  if len(t["segments"]) == 1
                  and t["segments"][0]["target_timerange"]["start"] > 0), None)
 
+    # 본 프로젝트에 곡 제목 트랙이 아예 없는 채널이 있습니다(불심명언).
+    # 그때는 채널명 글자를 본으로 삼아 새 트랙을 하나 만들어 줍니다.
+    # 사장님 지시로 **두 채널 모두 영상에 곡 제목을 띄웁니다.**
+    새로만든제목트랙 = False
+    if 제목트랙 is None and 곡제목표시:
+        제목트랙 = 곡제목트랙만들기(d, 글자트랙들)
+        새로만든제목트랙 = True
+
     for t in 글자트랙들:
         if t is 제목트랙:
             continue
@@ -303,8 +379,12 @@ def 만들기(이름, 배경, 곡폴더):
             칸 = copy.deepcopy(제목칸본)
             칸["id"] = 새아이디()
             칸["material_id"] = 재료["id"]
-            # 제목이 길어져도 오른쪽으로 넘치지 않도록 안쪽으로 옮깁니다.
-            칸["clip"]["transform"]["x"] = 제목가로위치
+            # 황금주파수는 본 프로젝트의 제목 자리가 오른쪽이라 안쪽으로
+            # 당겨 줍니다. 우리가 새로 만든 트랙(불심명언)은 이미 가운데
+            # 정렬로 잡아 두었으므로 건드리지 않습니다. 건드리면 가운데
+            # 정렬한 제목이 오른쪽으로 밀려 화면 밖으로 잘립니다.
+            if not 새로만든제목트랙:
+                칸["clip"]["transform"]["x"] = 제목가로위치
             칸["target_timerange"] = {"start": 시작 + 치우침,
                                      "duration": 길이 - 치우침}
             칸["extra_material_refs"] = [
@@ -374,6 +454,8 @@ if __name__ == "__main__":
     설정 = 설정읽기(인자.채널)
     본프로젝트 = 설정["캡컷"]["본영상"]
     사진본프로젝트 = 설정["캡컷"]["사진깔기본"]
+    곡제목표시 = 설정.get("영상", {}).get("곡제목표시", True)
     곡폴더 = 인자.곡폴더 or 설정["폴더"]["작업"]
-    print("채널: %s   본 영상: 「%s」" % (설정["표시이름"], 본프로젝트))
+    print("채널: %s   본 영상: 「%s」   곡 제목 %s" % (
+        설정["표시이름"], 본프로젝트, "표시" if 곡제목표시 else "숨김"))
     만들기(인자.이름, 인자.배경, 곡폴더)
