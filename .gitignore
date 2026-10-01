@@ -8,3 +8,9 @@
 # 결과물 폴더
 완성.mp4
 노래.mp3
+
+# 인증 정보는 절대 올리지 않습니다 (CLAUDE.md 참고)
+인증토큰*
+client_secret*.json
+api키.json
+*.bak
