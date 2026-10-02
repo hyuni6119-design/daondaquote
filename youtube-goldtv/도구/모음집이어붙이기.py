@@ -35,6 +35,7 @@ import 영상문구
 from 노래영상만들기 import 길이재기 as 초길이재기   # 이쪽은 '초' 를 돌려줍니다
 # 곡 순서를 정하는 규칙(같은 가사끼리 안 붙게 섞기)은 한 군데에만 두고 함께 씁니다.
 from 캡컷모음집만들기 import 곡모으기, 곡제목
+from 채널 import 설정읽기, 인자붙이기
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -161,5 +162,7 @@ if __name__ == "__main__":
     파서.add_argument("--곡폴더", required=True, help="곡 폴더들이 든 뿌리 폴더")
     파서.add_argument("--저장", required=True, help="만들 mp4 경로")
     파서.add_argument("--인트로없이", action="store_true")
+    인자붙이기(파서)
     인자 = 파서.parse_args()
+    영상문구.채널적용(설정읽기(인자.채널))
     만들기(인자.배경, 인자.곡폴더, 인자.저장, not 인자.인트로없이)

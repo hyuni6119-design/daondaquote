@@ -32,6 +32,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import 영상문구
+from 채널 import 설정읽기, 인자붙이기
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -171,8 +172,10 @@ if __name__ == "__main__":
     파서.add_argument("--다시", action="store_true", help="이미 만든 mp4도 다시 만듭니다")
     파서.add_argument("--문구없이", action="store_true",
                      help="황주 고정 문구(채널명·안내·곡 제목)를 넣지 않습니다")
+    인자붙이기(파서)
     인자 = 파서.parse_args()
 
+    영상문구.채널적용(설정읽기(인자.채널))
     도구확인()
 
     배경 = Path(인자.배경).resolve()
