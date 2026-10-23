@@ -2,9 +2,10 @@
   "use strict";
 
   var META = null, EPS = [], QUEUE = [], STATUS = {};
-  var view = { ch: "all", st: "all", mode: "cards", month: null, open: null, tab: "steps" };
+  var view = { ch: "all", st: "all", mode: "list", month: null, open: null, tab: "details", sortAsc: false };
   try { var saved = JSON.parse(localStorage.getItem("vm-view") || "{}");
-    ["ch", "st", "mode"].forEach(function (k) { if (saved[k]) view[k] = saved[k]; }); } catch (e) {}
+    ["ch", "st", "mode"].forEach(function (k) { if (saved[k]) view[k] = saved[k]; });
+    if (saved.v2 !== 1) view.mode = "list"; } catch (e) {} // 처음 한 번은 새 목록 보기로
 
   var BADGES = ["제작중", "막힘", "완료", "예약됨", "공개됨", "준비"];
   var DOW = ["일", "월", "화", "수", "목", "금", "토"];
@@ -45,7 +46,7 @@
     clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, 3000);
   }
   function saveView() {
-    try { localStorage.setItem("vm-view", JSON.stringify({ ch: view.ch, st: view.st, mode: view.mode })); } catch (e) {}
+    try { localStorage.setItem("vm-view", JSON.stringify({ ch: view.ch, st: view.st, mode: view.mode, v2: 1 })); } catch (e) {}
   }
   function chInfo(key) {
     return (META.channels.filter(function (c) { return c.key === key; })[0]) || { name: key, color: "#888" };
@@ -130,6 +131,73 @@
     if (views) parts.push("총 조회수 " + numText(views));
     if (next) parts.push("가장 급한 편: " + chInfo(next.channel).name + " " + next.ep + "편 (" + dateText(next.date) + " 공개)");
     $("summary").textContent = parts.join(" · ");
+  }
+
+
+  // ------------------------------------------------------------ 목록 (유튜브 스튜디오 ‘채널 콘텐츠’처럼)
+  var PRIV = { public: ["공개", "🌐"], private: ["비공개", "🔒"], unlisted: ["일부 공개", "🔗"] };
+  function privOf(e) {
+    if (e.privacy && PRIV[e.privacy]) return PRIV[e.privacy];
+    if (e.badge === "예약됨") return ["예약", "🕒"];
+    if (e.badge === "공개됨") return ["공개", "🌐"];
+    return ["초안", "📝"];
+  }
+  function dateLabel(e) {
+    if (e.badge === "공개됨" || e.privacy === "public") return "게시일";
+    if (e.badge === "예약됨") return "예약";
+    return "공개 예정";
+  }
+  function dotDate(d) {
+    if (!d) return "날짜 미정";
+    var p = d.split("-"); return p[0] + ". " + Number(p[1]) + ". " + Number(p[2]) + ".";
+  }
+  function oneLine(s) { return String(s || "").replace(/\s+/g, " ").trim(); }
+  function drawList() {
+    var body = $("listBody"); body.textContent = "";
+    var list = filtered().slice().sort(function (x, y) {
+      var c = String(x.date || "").localeCompare(String(y.date || ""));
+      return view.sortAsc ? c : -c;
+    });
+    $("sortArrow").textContent = view.sortAsc ? "↑" : "↓";
+    if (!list.length) { body.appendChild(h("div", { class: "empty-box", text: "보여 드릴 편이 없습니다." })); return; }
+    list.forEach(function (e) {
+      var src = thumbSrc(e);
+      var pv = privOf(e);
+      var pct = Math.round(e.done_steps / META.steps.length * 100);
+      var yt = e.video_id ? "https://youtu.be/" + e.video_id : null;
+      var row = h("div", { class: "yt-row", role: "button", tabindex: "0",
+        onclick: function (ev) { if (ev.target.closest("a,button")) return; openDetail(e.id); },
+        onkeydown: function (ev) { if (ev.key === "Enter") openDetail(e.id); } }, [
+        h("div", { class: "c-video" }, [
+          h("div", { class: "yt-thumb" }, [
+            src ? h("img", { src: src, alt: "", loading: "lazy", onerror: function () { this.remove(); } })
+                : h("div", { class: "yt-nothumb", text: (e.thumb_lines || []).filter(Boolean)[0] || "썸네일 없음" }),
+            e.minutes ? h("span", { class: "yt-dur", text: e.minutes + ":00" }) : null
+          ]),
+          h("div", { class: "yt-text" }, [
+            h("div", { class: "yt-title" + (e.title ? "" : " empty") }, [chTag(e.channel), " ", e.title || (e.ep + "편 · 제목 아직 없음")]),
+            h("div", { class: "yt-desc", text: oneLine(e.description) || "설명 없음" }),
+            h("div", { class: "yt-actions" }, [
+              h("button", { type: "button", class: "yt-ic", title: "세부정보", onclick: function () { openDetail(e.id); } }, ["✏️"]),
+              yt ? h("a", { class: "yt-ic", href: yt, target: "_blank", rel: "noopener", title: "유튜브에서 보기" }, ["📊"]) : null,
+              h("button", { type: "button", class: "yt-ic", title: e.badge === "예약됨" || e.badge === "공개됨" ? "다시 손보기 시키기" : "이 편 진행 시키기",
+                onclick: function () { api("POST", "/api/episodes/" + e.id + "/run").then(function () { toast("PC에게 시켰습니다"); refresh(); }); } }, ["▶️"])
+            ])
+          ])
+        ]),
+        h("div", { class: "c-prog" }, [
+          e.block ? h("span", { class: "yt-block", text: "막힘" })
+                  : h("span", { class: "badge " + e.badge, text: e.badge }),
+          h("div", { class: "bar" + (pct === 100 ? " full" : "") }, [h("i", { style: "width:" + pct + "%" })]),
+          h("small", { class: "muted", text: e.done_steps + "/" + META.steps.length + "단계" })
+        ]),
+        h("div", { class: "c-priv" }, [h("span", { class: "yt-priv" }, [pv[1] + " ", pv[0]])]),
+        h("div", { class: "c-date" }, [h("div", { text: dotDate(e.date) }), h("small", { class: "muted", text: dateLabel(e) })]),
+        h("div", { class: "c-num", text: e.views != null ? e.views.toLocaleString("ko-KR") : "—" }),
+        h("div", { class: "c-num", text: e.likes != null ? e.likes.toLocaleString("ko-KR") : "—" })
+      ]);
+      body.appendChild(row);
+    });
   }
 
   // ------------------------------------------------------------ 카드
@@ -232,7 +300,7 @@
 
   // ------------------------------------------------------------ 자세히
   function openDetail(id) {
-    view.open = id; view.tab = view.tab || "steps";
+    view.open = id; view.tab = "details";
     drawDetail();
     var dlg = $("detail");
     if (!dlg.open) dlg.showModal();
@@ -243,35 +311,118 @@
     var body = $("detailBody"); body.textContent = "";
     view.dirty = false;
     if (!e) { $("detail").close(); return; }
+    if (["details", "steps", "info"].indexOf(view.tab) < 0) view.tab = "details";
+    var src = thumbSrc(e);
+    var close = function () { $("detail").close(); };
+    var nav = h("aside", { class: "st-nav" }, [
+      h("button", { type: "button", class: "st-back", onclick: close }, ["← 채널 콘텐츠"]),
+      h("div", { class: "st-mini" }, [
+        h("div", { class: "yt-thumb" }, [src ? h("img", { src: src, alt: "" }) : h("div", { class: "yt-nothumb", text: "썸네일 없음" }),
+          e.minutes ? h("span", { class: "yt-dur", text: e.minutes + ":00" }) : null]),
+        h("div", { class: "muted small", text: "내 동영상 · " + chInfo(e.channel).name + " " + e.ep + "편" }),
+        h("div", { class: "st-mini-title", text: e.title || "제목 아직 없음" })
+      ]),
+      h("nav", {}, [["details", "✏️  세부정보"], ["steps", "📋  진행 단계"], ["info", "⚙️  기타 정보"]].map(function (t) {
+        return h("button", { type: "button", class: "st-menu" + (view.tab === t[0] ? " on" : ""), onclick: function () {
+          if (view.dirty && !confirm("저장하지 않은 내용이 있어요. 다른 메뉴로 갈까요?")) return;
+          view.tab = t[0]; drawDetail();
+        } }, [t[1]]);
+      }))
+    ]);
+    var main = h("section", { class: "st-main" });
+    if (view.tab === "details") detailsPane(e, main);
+    else {
+      main.appendChild(h("div", { class: "st-top" }, [h("h2", { text: view.tab === "steps" ? "진행 단계" : "기타 정보" }), h("span", { class: "spacer" }),
+        h("button", { type: "button", class: "btn ghost small", onclick: close }, ["닫기 ✕"])]));
+      main.appendChild(view.tab === "steps" ? stepsPane(e) : infoPane(e));
+    }
+    body.appendChild(h("div", { class: "st-wrap" }, [nav, main]));
+  }
 
-    var ytUrl = e.video_id ? "https://youtu.be/" + e.video_id : null;
-    body.appendChild(h("div", { class: "d-head" }, [
-      thumbBox(e, false),
-      h("div", { class: "info" }, [
-        h("div", { class: "card-meta" }, [chTag(e.channel), e.ep + "편", h("span", { class: "badge " + e.badge, text: e.badge })]),
-        h("h3", { text: e.title || "제목 아직 없음" }),
-        h("div", { class: "muted", text: dateText(e.date) + " 공개" + (e.minutes ? " · " + e.minutes + "분" : "") +
-          (e.songs_total ? " · 곡 " + (e.songs_done || 0) + "/" + e.songs_total : "") }),
-        e.views != null ? h("div", { text: "조회 " + numText(e.views) + (e.likes != null ? " · 좋아요 " + numText(e.likes) : "") +
-          (e.privacy ? " · " + ({ public: "공개", private: "비공개", unlisted: "일부공개" }[e.privacy] || e.privacy) : "") }) : null,
-        h("div", { class: "row gap" }, [
-          ytUrl ? h("a", { class: "btn small", href: ytUrl, target: "_blank", rel: "noopener", text: "유튜브에서 보기" }) : null,
-          h("button", { class: "btn primary small", text: e.badge === "예약됨" || e.badge === "공개됨" ? "다시 손보기 시키기" : "이 편 진행 시키기",
-            onclick: function () { api("POST", "/api/episodes/" + e.id + "/run").then(function () { toast("PC에게 시켰습니다"); refresh(); }); } })
+  function box(label, help, child) {
+    return h("div", { class: "st-box" }, [h("div", { class: "st-box-label" }, [].concat(label, help ? [h("span", { class: "st-help", title: help, text: "?" })] : [])), child]);
+  }
+  function detailsPane(e, main) {
+    var pv = privOf(e);
+    var lines = (e.thumb_lines || []).slice(0, 4); while (lines.length < 4) lines.push("");
+    var title = h("textarea", { class: "st-input", rows: 2, maxlength: 100 }); title.value = e.title || "";
+    var desc = h("textarea", { class: "st-input", rows: 14 }); desc.value = e.description || "";
+    var tc = h("span", { class: "st-count" }), dc = h("span", { class: "st-count" });
+    var upd = function () { tc.textContent = title.value.length + "/100"; tc.className = "st-count" + (title.value.length > 100 ? " over" : ""); dc.textContent = desc.value.length + "/5000"; };
+    title.addEventListener("input", upd); desc.addEventListener("input", upd); upd();
+    var lineIns = lines.map(function (v, i) { var x = h("input", { type: "text", value: v, placeholder: (i + 1) + "줄" + (i === 3 ? " ([ ] 안이 강조색)" : "") }); return x; });
+    var file = h("input", { type: "file", accept: "image/jpeg,image/png,image/webp", hidden: true });
+    var src = thumbSrc(e);
+    var thumbImg = h("div", { class: "st-thumb-now" }, [src ? h("img", { src: src, alt: "" }) : h("div", { class: "yt-nothumb", text: "썸네일 없음" })]);
+    file.addEventListener("change", function () {
+      if (!file.files[0]) return;
+      var u = URL.createObjectURL(file.files[0]);
+      thumbImg.textContent = ""; thumbImg.appendChild(h("img", { src: u, alt: "" }));
+      view.dirty = true; saveBtn.disabled = false; undoBtn.disabled = false;
+    });
+    var undoBtn = h("button", { type: "button", class: "btn st-pill", disabled: true, onclick: function () { view.dirty = false; drawDetail(); } }, ["변경사항 실행취소"]);
+    var saveBtn = h("button", { type: "button", class: "btn st-pill primary", disabled: true, onclick: function () {
+      var btn = this; btn.disabled = true;
+      var bodyData = { title: title.value, description: desc.value, thumb_lines: lineIns.map(function (x) { return x.value; }) };
+      var up = file.files[0] ? (function () { var fd = new FormData(); fd.append("file", file.files[0]);
+        return api("POST", "/api/episodes/" + e.id + "/thumbnail", fd); })() : Promise.resolve();
+      up.then(function () { return api("POST", "/api/episodes/" + e.id + "/edit", bodyData); })
+        .then(function (r) { view.dirty = false; toast(r.changed.length ? r.changed.join(" · ") + " 고치기를 PC에게 시켰습니다" : "바뀐 내용이 없습니다"); refresh(); })
+        .catch(function (err) { toast(err.message); btn.disabled = false; });
+    } }, ["저장"]);
+    main.addEventListener("input", function () { saveBtn.disabled = false; undoBtn.disabled = false; });
+
+    main.appendChild(h("div", { class: "st-top" }, [h("h2", { text: "동영상 세부정보" }), h("span", { class: "spacer" }), undoBtn, saveBtn,
+      h("button", { type: "button", class: "btn ghost small", title: "닫기", onclick: function () {
+        if (view.dirty && !confirm("저장하지 않은 내용이 있어요. 닫을까요?")) return; $("detail").close(); } }, ["✕"])]));
+
+    var left = h("div", { class: "st-left" }, [
+      box([h("span", {}, ["제목(필수 항목)"])], "유튜브에 보이는 제목이에요. 저장하면 PC가 유튜브에 반영해요", h("div", {}, [title, tc])),
+      box([h("span", {}, ["설명"])], "유튜브 설명란이에요", h("div", {}, [desc, dc])),
+      h("div", { class: "st-sec" }, [
+        h("h3", { text: "썸네일" }),
+        h("p", { class: "muted small", text: "썸네일 그림과 그 위에 얹을 글씨(4줄)예요. 저장하면 PC가 새 썸네일을 만들어 유튜브에 반영해요." }),
+        h("div", { class: "st-thumb-row" }, [
+          thumbImg,
+          h("div", { class: "st-thumb-lines" }, lineIns.concat([
+            h("button", { type: "button", class: "btn small", onclick: function () { file.click(); } }, ["🖼 그림 바꾸기"]), file
+          ]))
+        ])
+      ]),
+      (e.tags && e.tags.length) ? h("div", { class: "st-sec" }, [h("h3", { text: "태그" }), h("div", { class: "st-tags" }, e.tags.map(function (t) { return h("span", { text: t }); }))]) : null
+    ]);
+
+    var yt = e.video_id ? "https://youtu.be/" + e.video_id : null;
+    var player = e.video_id && (e.privacy === "public" || e.privacy === "unlisted")
+      ? h("iframe", { class: "st-player", src: "https://www.youtube.com/embed/" + e.video_id, title: "동영상 미리보기", allow: "encrypted-media; picture-in-picture", allowfullscreen: true })
+      : h("div", { class: "st-player st-player-img" }, [src ? h("img", { src: src, alt: "" }) : h("div", { class: "yt-nothumb", text: "미리보기 없음" }),
+          h("span", { class: "st-play", text: "▶" })]);
+    var right = h("div", { class: "st-right" }, [
+      h("div", { class: "st-card" }, [
+        player,
+        h("div", { class: "st-card-body" }, [
+          h("div", { class: "muted small", text: "동영상 링크" }),
+          yt ? h("div", { class: "row gap" }, [h("a", { href: yt, target: "_blank", rel: "noopener", class: "st-link", text: yt }),
+            h("button", { type: "button", class: "yt-ic", title: "링크 복사", onclick: function () {
+              (navigator.clipboard ? navigator.clipboard.writeText(yt) : Promise.reject()).then(function () { toast("링크를 복사했습니다"); }, function () { toast(yt); }); } }, ["📋"])])
+             : h("div", { class: "muted", text: "아직 유튜브에 안 올라감" }),
+          h("div", { class: "st-kv" }, [
+            h("div", {}, [h("span", { class: "muted small", text: "공개 상태" }), h("b", { text: pv[1] + " " + pv[0] })]),
+            h("div", {}, [h("span", { class: "muted small", text: dateLabel(e) }), h("b", { text: dotDate(e.date) })]),
+            h("div", {}, [h("span", { class: "muted small", text: "조회수" }), h("b", { text: e.views != null ? e.views.toLocaleString("ko-KR") : "—" })]),
+            h("div", {}, [h("span", { class: "muted small", text: "좋아요" }), h("b", { text: e.likes != null ? e.likes.toLocaleString("ko-KR") : "—" })]),
+            h("div", {}, [h("span", { class: "muted small", text: "길이 · 곡" }), h("b", { text: (e.minutes ? e.minutes + "분" : "—") + (e.songs_total ? " · " + (e.songs_done || 0) + "/" + e.songs_total + "곡" : "") })]),
+            h("div", {}, [h("span", { class: "muted small", text: "진행" }), h("b", { text: (e.block ? "막힘 · " : "") + e.done_steps + "/" + META.steps.length + "단계 (" + e.badge + ")" })])
+          ]),
+          h("div", { class: "row gap" }, [
+            h("button", { type: "button", class: "btn small", onclick: function () {
+              api("POST", "/api/episodes/" + e.id + "/run").then(function () { toast("PC에게 시켰습니다"); refresh(); }); } },
+              [e.badge === "예약됨" || e.badge === "공개됨" ? "다시 손보기 시키기" : "이 편 진행 시키기"])
+          ])
         ])
       ])
-    ]));
-
-    var tabs = h("div", { class: "tabs d-tabs" });
-    [["steps", "아홉 단계"], ["text", "썸네일·제목·설명"], ["info", "정보 고치기"]].forEach(function (t) {
-      tabs.appendChild(h("button", { class: view.tab === t[0] ? "on" : "", text: t[1],
-        onclick: function () { view.tab = t[0]; drawDetail(); } }));
-    });
-    body.appendChild(tabs);
-
-    if (view.tab === "steps") body.appendChild(stepsPane(e));
-    else if (view.tab === "text") body.appendChild(textPane(e));
-    else body.appendChild(infoPane(e));
+    ]);
+    main.appendChild(h("div", { class: "st-cols" }, [left, right]));
   }
 
   function stepsPane(e) {
@@ -388,6 +539,7 @@
     var v = ev.target.dataset && ev.target.dataset.v; if (!v) return;
     view.mode = v; saveView(); drawAll();
   });
+  $("sortDate").addEventListener("click", function () { view.sortAsc = !view.sortAsc; drawList(); });
   $("prevM").addEventListener("click", function () { view.month = new Date(view.month.getFullYear(), view.month.getMonth() - 1, 1); drawCal(); });
   $("nextM").addEventListener("click", function () { view.month = new Date(view.month.getFullYear(), view.month.getMonth() + 1, 1); drawCal(); });
   $("btnAdd").addEventListener("click", function () {
@@ -415,8 +567,8 @@
   // ------------------------------------------------------------ 그리기 · 새로고침
   function drawAll() {
     drawTabs(); drawSummary(); drawStatus(); drawQueue();
-    $("cards").hidden = view.mode !== "cards"; $("cal").hidden = view.mode !== "cal";
-    if (view.mode === "cards") drawCards(); else drawCal();
+    $("list").hidden = view.mode !== "list"; $("cards").hidden = view.mode !== "cards"; $("cal").hidden = view.mode !== "cal";
+    if (view.mode === "list") drawList(); else if (view.mode === "cards") drawCards(); else drawCal();
     if (view.open && $("detail").open) {
       if (!view.dirty) drawDetail();
     }

@@ -43,7 +43,8 @@
     <div class="tabs" id="stTabs"></div>
     <div class="spacer"></div>
     <div class="tabs" id="viewTabs">
-      <button data-v="cards" class="on">카드</button>
+      <button data-v="list" class="on">목록</button>
+      <button data-v="cards">카드</button>
       <button data-v="cal">달력</button>
     </div>
     <button class="btn primary" id="btnAdd">＋ 새 편</button>
@@ -51,7 +52,19 @@
 
   <div class="summary" id="summary"></div>
 
-  <main id="cards" class="cards"></main>
+  <!-- 유튜브 스튜디오 ‘채널 콘텐츠’ 같은 목록 -->
+  <main id="list" class="yt-list">
+    <div class="yt-row yt-headrow">
+      <div class="c-video">동영상</div>
+      <div class="c-prog">진행</div>
+      <div class="c-priv">공개 상태</div>
+      <div class="c-date"><button type="button" class="sortbtn" id="sortDate">날짜 <span id="sortArrow">↓</span></button></div>
+      <div class="c-num">조회수</div>
+      <div class="c-num">좋아요</div>
+    </div>
+    <div id="listBody"></div>
+  </main>
+  <main id="cards" class="cards" hidden></main>
   <main id="cal" class="cal" hidden>
     <div class="cal-head">
       <button class="btn small" id="prevM" aria-label="지난달">‹</button>
@@ -72,8 +85,7 @@
 </div>
 
 <!-- 편 자세히 보기 -->
-<dialog id="detail">
-  <form method="dialog" class="dlg-close"><button class="btn ghost small" aria-label="닫기">✕</button></form>
+<dialog id="detail" class="studio">
   <div id="detailBody"></div>
 </dialog>
 
