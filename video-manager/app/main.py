@@ -222,6 +222,39 @@ async def redo(eid: int, request: Request, _=Depends(need_user)):
     return db.add_queue("다시만들기", eid, f"{_name(e['channel'])} {e['ep']}편 다시 만들기 (예전 영상 삭제)", {"note": why, "video_id": e.get("video_id")})
 
 
+REVIEW_PARTS = ("썸네일", "제목", "설명", "영상")
+
+
+@app.post("/api/episodes/{eid}/review")
+async def review_done(eid: int, request: Request, _=Depends(need_user)):
+    """검토 완료: 썸네일 · 제목 · 설명 · 영상을 하나씩 OK / 고치기로 체크
+    - 모두 OK → 승인 (예약 공개)
+    - 영상이 별로 → 다시만들기 (예전 영상 삭제 후 새로 올림)
+    - 영상은 괜찮고 썸네일·제목·설명만 별로 → 고치기 (같은 영상에서 그것만 바꿈)"""
+    e = db.episode(eid)
+    if not e:
+        raise HTTPException(404)
+    body = await request.json()
+    checks = body.get("checks") or {}
+    notes = body.get("notes") or {}
+    bad = [p for p in REVIEW_PARTS if checks.get(p) is False]
+    if any(checks.get(p) is None for p in REVIEW_PARTS):
+        raise HTTPException(400, "썸네일 · 제목 · 설명 · 영상을 모두 체크해 주세요")
+    fix = {p: str(notes.get(p, "")).strip()[:500] for p in bad}
+    name = f"{_name(e['channel'])} {e['ep']}편"
+    if not bad:
+        return approve(eid)
+    if "영상" in bad:
+        db.update_episode(eid, {"review": "다시만들기"})
+        db.add_log(f"{name} 다시 만들기를 시켰습니다 — " + " · ".join(f"{p}: {n or '별로'}" for p, n in fix.items()))
+        return db.add_queue("다시만들기", eid, f"{name} 다시 만들기 (예전 영상 삭제)",
+                            {"fix": fix, "note": " / ".join(f"{p}: {n}" for p, n in fix.items() if n), "video_id": e.get("video_id")})
+    db.update_episode(eid, {"review": "고치는중"})
+    db.add_log(f"{name} {' · '.join(bad)} 고치기를 시켰습니다 (영상은 그대로)")
+    return db.add_queue("고치기", eid, f"{name} {' · '.join(bad)} 고치기 (영상은 그대로)",
+                        {"fix": fix, "video_id": e.get("video_id"), "date": e.get("date")})
+
+
 # ---------------------------------------------------------------- PC 보고 (보고.py 가 씁니다)
 
 @app.post("/api/report")
@@ -266,7 +299,7 @@ def list_queue(state: Optional[str] = None, _=Depends(need_user)):
 async def add_queue(request: Request, _=Depends(need_user)):
     body = await request.json()
     kind = body.get("kind")
-    if kind not in ("이어서", "멈춤", "진행", "글고침", "메모", "승인", "다시만들기"):
+    if kind not in ("이어서", "멈춤", "진행", "글고침", "메모", "승인", "다시만들기", "고치기"):
         raise HTTPException(400, "모르는 일입니다")
     return db.add_queue(kind, body.get("episode_id"), body.get("label", kind), body.get("payload"))
 

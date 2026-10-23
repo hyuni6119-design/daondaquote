@@ -7,7 +7,7 @@
     ["ch", "st", "mode"].forEach(function (k) { if (saved[k]) view[k] = saved[k]; });
     if (saved.v2 !== 1) view.mode = "list"; } catch (e) {} // 처음 한 번은 새 목록 보기로
 
-  var BADGES = ["검토대기", "다시만들기", "제작중", "막힘", "완료", "예약됨", "공개됨", "준비"];
+  var BADGES = ["검토대기", "다시만들기", "고치는중", "제작중", "막힘", "완료", "예약됨", "공개됨", "준비"];
   var DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
   // ------------------------------------------------------------ 도우미
@@ -403,23 +403,65 @@
           [src ? h("img", { src: src, alt: "" }) : h("div", { class: "yt-nothumb", text: "미리보기 없음" }),
            studio ? h("span", { class: "st-play", text: "▶" }) : null,
            studio ? h("span", { class: "st-play-note", text: "눌러서 스튜디오에서 미리보기" }) : null]);
-    // 검토 대기: 미리보기로 확인하고 승인 / 다시 만들기
-    var review = e.review === "검토대기" ? h("div", { class: "st-review" }, [
-      h("b", { text: "🕵 검토 대기 중" }),
-      h("p", { class: "small", text: "PC가 일부 공개로 올려 두었어요. 왼쪽 미리보기에서 바로 틀어 보고 눌러 주세요. 승인하면 " + dotDate(e.date) + "에 맞춰 예약 공개로 바뀌어요." }),
-      h("div", { class: "row gap" }, [
-        h("button", { type: "button", class: "btn primary", onclick: function () {
-          if (!confirm(chInfo(e.channel).name + " " + e.ep + "편을 승인할까요? PC가 예약 공개로 바꿔요.")) return;
-          api("POST", "/api/episodes/" + e.id + "/approve").then(function () { toast("승인했어요. PC가 예약 공개로 바꿔요"); refresh(); }).catch(function (err) { toast(err.message); });
-        } }, ["✅ 승인 (예약 공개)"]),
-        h("button", { type: "button", class: "btn", onclick: function () {
-          var why = prompt("무엇이 마음에 안 드나요? (PC가 이걸 보고 다시 만들어요)\n※ 지금 올라간 영상은 유튜브에서 삭제돼요 (되돌릴 수 없어요)", "");
-          if (why === null) return;
-          api("POST", "/api/episodes/" + e.id + "/redo", { note: why }).then(function () { toast("다시 만들기를 시켰어요"); refresh(); }).catch(function (err) { toast(err.message); });
-        } }, ["🔁 다시 만들기"])
-      ])
-    ]) : e.review === "다시만들기" ? h("div", { class: "st-review redo" }, [h("b", { text: "🔁 다시 만드는 중" }), h("p", { class: "small", text: "PC가 예전 영상을 삭제하고 다시 만들어요. 다 되면 다시 검토 대기로 와요." })])
-      : e.review === "승인" ? h("div", { class: "st-review ok" }, [h("b", { text: "✅ 승인함" }), h("p", { class: "small", text: "PC가 예약 공개로 바꿔요 (시켜 둔 일에서 진행 상황을 볼 수 있어요)." })]) : null;
+    // 검토 대기: 썸네일 · 제목 · 설명 · 영상을 하나씩 체크하고 ‘검토 완료’
+    var review = null;
+    if (e.review === "검토대기") {
+      var PARTS = [["썸네일", "🖼"], ["제목", "🔤"], ["설명", "📝"], ["영상", "🎬"]];
+      var chk = {}, memo = {}, rows = {};
+      var doneBtn = h("button", { type: "button", class: "btn primary", disabled: true }, ["검토 완료"]);
+      var sum = h("p", { class: "small rv-sum", text: "네 가지를 모두 체크해 주세요" });
+      var redraw = function () {
+        var bad = PARTS.filter(function (p) { return chk[p[0]] === false; }).map(function (p) { return p[0]; });
+        var all = PARTS.every(function (p) { return chk[p[0]] !== undefined; });
+        PARTS.forEach(function (p) {
+          var r = rows[p[0]];
+          r.ok.classList.toggle("on", chk[p[0]] === true);
+          r.no.classList.toggle("on", chk[p[0]] === false);
+          r.memo.style.display = chk[p[0]] === false ? "" : "none";
+        });
+        doneBtn.disabled = !all;
+        sum.textContent = !all ? "네 가지를 모두 체크해 주세요"
+          : !bad.length ? "모두 OK → 승인하면 " + dotDate(e.date) + "에 맞춰 예약 공개로 바뀌어요"
+          : bad.indexOf("영상") >= 0 ? "영상이 별로 → 지금 영상은 유튜브에서 삭제하고 다시 만들어요 (되돌릴 수 없어요)"
+          : bad.join(" · ") + "만 고쳐요 → 영상은 그대로 두고 그것만 바꿔요";
+        doneBtn.textContent = !all ? "검토 완료" : !bad.length ? "✅ 검토 완료 · 승인" : bad.indexOf("영상") >= 0 ? "🔁 검토 완료 · 다시 만들기" : "✏️ 검토 완료 · 고치기";
+      };
+      var list = PARTS.map(function (p) {
+        var k = p[0];
+        var ok = h("button", { type: "button", class: "rv-btn ok", onclick: function () { chk[k] = true; redraw(); } }, ["👍 OK"]);
+        var no = h("button", { type: "button", class: "rv-btn no", onclick: function () { chk[k] = false; redraw(); memoBox.focus(); } }, ["👎 고치기"]);
+        var memoBox = h("input", { class: "rv-memo", placeholder: k + "의 무엇이 별로인가요? (예: " + ({ 썸네일: "글자가 얼굴을 가려", 제목: "너무 길어", 설명: "첫 줄이 밋밋해", 영상: "목소리가 너무 빨라" })[k] + ")",
+          oninput: function () { memo[k] = memoBox.value; } });
+        rows[k] = { ok: ok, no: no, memo: memoBox };
+        return h("div", { class: "rv-row" }, [h("div", { class: "rv-line" }, [h("b", { text: p[1] + " " + k }), h("div", { class: "rv-pick" }, [ok, no])]), memoBox]);
+      });
+      doneBtn.onclick = function () {
+        var bad = PARTS.filter(function (p) { return chk[p[0]] === false; }).map(function (p) { return p[0]; });
+        var name = chInfo(e.channel).name + " " + e.ep + "편";
+        var q = !bad.length ? name + "을 승인할까요? PC가 예약 공개로 바꿔요."
+          : bad.indexOf("영상") >= 0 ? name + " 영상을 다시 만들까요?\n※ 지금 올라간 영상은 유튜브에서 삭제돼요 (되돌릴 수 없어요)"
+          : name + "의 " + bad.join(" · ") + "만 고칠까요? 영상은 그대로예요.";
+        if (!confirm(q)) return;
+        api("POST", "/api/episodes/" + e.id + "/review", { checks: chk, notes: memo }).then(function () {
+          toast(!bad.length ? "승인했어요. PC가 예약 공개로 바꿔요" : bad.indexOf("영상") >= 0 ? "다시 만들기를 시켰어요" : bad.join(" · ") + " 고치기를 시켰어요");
+          refresh();
+        }).catch(function (err) { toast(err.message); });
+      };
+      review = h("div", { class: "st-review" }, [
+        h("b", { text: "🕵 검토 대기 중" }),
+        h("p", { class: "small", text: "PC가 일부 공개로 올려 두었어요. 왼쪽 미리보기에서 틀어 보고 하나씩 체크해 주세요." }),
+        h("div", { class: "rv-list" }, list),
+        sum,
+        h("div", { class: "row gap" }, [doneBtn])
+      ]);
+      redraw();
+    } else if (e.review === "다시만들기") {
+      review = h("div", { class: "st-review redo" }, [h("b", { text: "🔁 다시 만드는 중" }), h("p", { class: "small", text: "PC가 예전 영상을 삭제하고 다시 만들어요. 다 되면 다시 검토 대기로 와요." })]);
+    } else if (e.review === "고치는중") {
+      review = h("div", { class: "st-review redo" }, [h("b", { text: "✏️ 고치는 중" }), h("p", { class: "small", text: "영상은 그대로 두고, 체크한 것(썸네일·제목·설명)만 PC가 바꿔요. 다 되면 다시 검토 대기로 와요." })]);
+    } else if (e.review === "승인") {
+      review = h("div", { class: "st-review ok" }, [h("b", { text: "✅ 승인함" }), h("p", { class: "small", text: "PC가 예약 공개로 바꿔요 (시켜 둔 일에서 진행 상황을 볼 수 있어요)." })]);
+    }
     var right = h("div", { class: "st-right" }, [
       review,
       h("div", { class: "st-card" }, [

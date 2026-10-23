@@ -129,6 +129,8 @@ def badge(ep):
         return "검토대기"
     if ep.get("review") == "다시만들기":
         return "다시만들기"
+    if ep.get("review") == "고치는중":
+        return "고치는중"
     if ep.get("video_id") or steps.get("업로드 예약") == "완료":
         if ep.get("date") and ep["date"] > today():
             return "예약됨"
