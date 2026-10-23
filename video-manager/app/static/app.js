@@ -413,8 +413,7 @@
           api("POST", "/api/episodes/" + e.id + "/approve").then(function () { toast("승인했어요. PC가 예약 공개로 바꿔요"); refresh(); }).catch(function (err) { toast(err.message); });
         } }, ["✅ 승인 (예약 공개)"]),
         h("button", { type: "button", class: "btn", onclick: function () {
-          var why = prompt("무엇이 마음에 안 드나요? (PC가 이걸 보고 다시 만들어요)
-※ 지금 올라간 영상은 유튜브에서 삭제돼요 (되돌릴 수 없어요)", "");
+          var why = prompt("무엇이 마음에 안 드나요? (PC가 이걸 보고 다시 만들어요)\n※ 지금 올라간 영상은 유튜브에서 삭제돼요 (되돌릴 수 없어요)", "");
           if (why === null) return;
           api("POST", "/api/episodes/" + e.id + "/redo", { note: why }).then(function () { toast("다시 만들기를 시켰어요"); refresh(); }).catch(function (err) { toast(err.message); });
         } }, ["🔁 다시 만들기"])
