@@ -413,12 +413,13 @@
           api("POST", "/api/episodes/" + e.id + "/approve").then(function () { toast("승인했어요. PC가 예약 공개로 바꿔요"); refresh(); }).catch(function (err) { toast(err.message); });
         } }, ["✅ 승인 (예약 공개)"]),
         h("button", { type: "button", class: "btn", onclick: function () {
-          var why = prompt("무엇이 마음에 안 드나요? (PC가 이걸 보고 다시 만들어요)", "");
+          var why = prompt("무엇이 마음에 안 드나요? (PC가 이걸 보고 다시 만들어요)
+※ 지금 올라간 영상은 유튜브에서 삭제돼요 (되돌릴 수 없어요)", "");
           if (why === null) return;
           api("POST", "/api/episodes/" + e.id + "/redo", { note: why }).then(function () { toast("다시 만들기를 시켰어요"); refresh(); }).catch(function (err) { toast(err.message); });
         } }, ["🔁 다시 만들기"])
       ])
-    ]) : e.review === "다시만들기" ? h("div", { class: "st-review redo" }, [h("b", { text: "🔁 다시 만드는 중" }), h("p", { class: "small", text: "PC가 다시 만들고 나면 다시 검토 대기로 와요." })])
+    ]) : e.review === "다시만들기" ? h("div", { class: "st-review redo" }, [h("b", { text: "🔁 다시 만드는 중" }), h("p", { class: "small", text: "PC가 예전 영상을 삭제하고 다시 만들어요. 다 되면 다시 검토 대기로 와요." })])
       : e.review === "승인" ? h("div", { class: "st-review ok" }, [h("b", { text: "✅ 승인함" }), h("p", { class: "small", text: "PC가 예약 공개로 바꿔요 (시켜 둔 일에서 진행 상황을 볼 수 있어요)." })]) : null;
     var right = h("div", { class: "st-right" }, [
       review,

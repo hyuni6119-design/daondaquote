@@ -211,7 +211,7 @@ def approve(eid: int, _=Depends(need_user)):
 
 @app.post("/api/episodes/{eid}/redo")
 async def redo(eid: int, request: Request, _=Depends(need_user)):
-    """검토해 보니 마음에 안 듦 → PC가 이유를 보고 다시 만듦"""
+    """검토해 보니 마음에 안 듦 → PC가 예전 영상을 삭제하고 이유를 보고 다시 만듦"""
     e = db.episode(eid)
     if not e:
         raise HTTPException(404)
@@ -219,7 +219,7 @@ async def redo(eid: int, request: Request, _=Depends(need_user)):
     why = str(body.get("note", "")).strip()[:500]
     db.update_episode(eid, {"review": "다시만들기"})
     db.add_log(f"{_name(e['channel'])} {e['ep']}편 다시 만들기를 시켰습니다" + (f" — {why}" if why else ""))
-    return db.add_queue("다시만들기", eid, f"{_name(e['channel'])} {e['ep']}편 다시 만들기", {"note": why, "video_id": e.get("video_id")})
+    return db.add_queue("다시만들기", eid, f"{_name(e['channel'])} {e['ep']}편 다시 만들기 (예전 영상 삭제)", {"note": why, "video_id": e.get("video_id")})
 
 
 # ---------------------------------------------------------------- PC 보고 (보고.py 가 씁니다)
