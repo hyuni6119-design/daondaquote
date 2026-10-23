@@ -7,7 +7,7 @@
     ["ch", "st", "mode"].forEach(function (k) { if (saved[k]) view[k] = saved[k]; });
     if (saved.v2 !== 1) view.mode = "list"; } catch (e) {} // 처음 한 번은 새 목록 보기로
 
-  var BADGES = ["제작중", "막힘", "완료", "예약됨", "공개됨", "준비"];
+  var BADGES = ["검토대기", "다시만들기", "제작중", "막힘", "완료", "예약됨", "공개됨", "준비"];
   var DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
   // ------------------------------------------------------------ 도우미
@@ -403,7 +403,25 @@
           [src ? h("img", { src: src, alt: "" }) : h("div", { class: "yt-nothumb", text: "미리보기 없음" }),
            studio ? h("span", { class: "st-play", text: "▶" }) : null,
            studio ? h("span", { class: "st-play-note", text: "눌러서 스튜디오에서 미리보기" }) : null]);
+    // 검토 대기: 미리보기로 확인하고 승인 / 다시 만들기
+    var review = e.review === "검토대기" ? h("div", { class: "st-review" }, [
+      h("b", { text: "🕵 검토 대기 중" }),
+      h("p", { class: "small", text: "PC가 비공개로 올려 두었어요. ▶ 스튜디오에서 미리보기로 확인한 뒤 눌러 주세요. 승인하면 " + dotDate(e.date) + "에 맞춰 예약 공개로 바뀌어요." }),
+      h("div", { class: "row gap" }, [
+        h("button", { type: "button", class: "btn primary", onclick: function () {
+          if (!confirm(chInfo(e.channel).name + " " + e.ep + "편을 승인할까요? PC가 예약 공개로 바꿔요.")) return;
+          api("POST", "/api/episodes/" + e.id + "/approve").then(function () { toast("승인했어요. PC가 예약 공개로 바꿔요"); refresh(); }).catch(function (err) { toast(err.message); });
+        } }, ["✅ 승인 (예약 공개)"]),
+        h("button", { type: "button", class: "btn", onclick: function () {
+          var why = prompt("무엇이 마음에 안 드나요? (PC가 이걸 보고 다시 만들어요)", "");
+          if (why === null) return;
+          api("POST", "/api/episodes/" + e.id + "/redo", { note: why }).then(function () { toast("다시 만들기를 시켰어요"); refresh(); }).catch(function (err) { toast(err.message); });
+        } }, ["🔁 다시 만들기"])
+      ])
+    ]) : e.review === "다시만들기" ? h("div", { class: "st-review redo" }, [h("b", { text: "🔁 다시 만드는 중" }), h("p", { class: "small", text: "PC가 다시 만들고 나면 다시 검토 대기로 와요." })])
+      : e.review === "승인" ? h("div", { class: "st-review ok" }, [h("b", { text: "✅ 승인함" }), h("p", { class: "small", text: "PC가 예약 공개로 바꿔요 (시켜 둔 일에서 진행 상황을 볼 수 있어요)." })]) : null;
     var right = h("div", { class: "st-right" }, [
+      review,
       h("div", { class: "st-card" }, [
         player,
         h("div", { class: "st-card-body" }, [

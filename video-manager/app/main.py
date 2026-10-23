@@ -197,6 +197,31 @@ async def edit_request(eid: int, request: Request, _=Depends(need_user)):
     return {"ok": True, "changed": changed, "queue": item}
 
 
+@app.post("/api/episodes/{eid}/approve")
+def approve(eid: int, _=Depends(need_user)):
+    """검토 대기 편을 승인 → PC가 비공개 영상을 공개 날짜에 맞춰 예약 공개로 바꿈"""
+    e = db.episode(eid)
+    if not e:
+        raise HTTPException(404)
+    db.update_episode(eid, {"review": "승인"})
+    db.add_log(f"{_name(e['channel'])} {e['ep']}편을 승인했습니다 (예약 공개로 바꾸기를 PC에게 시킴)")
+    return db.add_queue("승인", eid, f"{_name(e['channel'])} {e['ep']}편 승인 — 예약 공개로 바꾸기",
+                        {"video_id": e.get("video_id"), "date": e.get("date")})
+
+
+@app.post("/api/episodes/{eid}/redo")
+async def redo(eid: int, request: Request, _=Depends(need_user)):
+    """검토해 보니 마음에 안 듦 → PC가 이유를 보고 다시 만듦"""
+    e = db.episode(eid)
+    if not e:
+        raise HTTPException(404)
+    body = await request.json()
+    why = str(body.get("note", "")).strip()[:500]
+    db.update_episode(eid, {"review": "다시만들기"})
+    db.add_log(f"{_name(e['channel'])} {e['ep']}편 다시 만들기를 시켰습니다" + (f" — {why}" if why else ""))
+    return db.add_queue("다시만들기", eid, f"{_name(e['channel'])} {e['ep']}편 다시 만들기", {"note": why, "video_id": e.get("video_id")})
+
+
 # ---------------------------------------------------------------- PC 보고 (보고.py 가 씁니다)
 
 @app.post("/api/report")
@@ -241,7 +266,7 @@ def list_queue(state: Optional[str] = None, _=Depends(need_user)):
 async def add_queue(request: Request, _=Depends(need_user)):
     body = await request.json()
     kind = body.get("kind")
-    if kind not in ("이어서", "멈춤", "진행", "글고침", "메모"):
+    if kind not in ("이어서", "멈춤", "진행", "글고침", "메모", "승인", "다시만들기"):
         raise HTTPException(400, "모르는 일입니다")
     return db.add_queue(kind, body.get("episode_id"), body.get("label", kind), body.get("payload"))
 

@@ -233,6 +233,17 @@ def 막힘(a):
     print("[완료] " + ("막힘을 적었습니다" if a.이유 else "막힘을 풀었습니다"))
 
 
+def 검토요청(a):
+    """비공개로 올린 뒤: 사이트에 ‘검토 대기’로 알림 (사장님이 미리보기로 확인하고 승인)"""
+    값 = {"review": "검토대기", "log": "비공개로 올림 — 검토 기다림"}
+    if a.주소:
+        번호 = 영상번호(a.주소)
+        if 번호:
+            값["video_id"] = 번호
+    보고(a.채널, a.편, **값)
+    print("[완료] 사이트에 검토 대기로 올렸습니다. 사장님이 승인하면 ‘할일’에 승인이 들어옵니다.")
+
+
 def 기록(a):
     요청("POST", "/api/log", {"text": a.글})
     print("[완료] 기록을 남겼습니다")
@@ -261,6 +272,7 @@ def main():
     x = s.add_parser("업로드정보"); 편인자(x); x.add_argument("--폴더", required=True); x.set_defaults(f=업로드정보)
     x = s.add_parser("막힘"); 편인자(x); x.add_argument("--이유", required=True); x.set_defaults(f=막힘)
     x = s.add_parser("기록"); x.add_argument("글"); x.set_defaults(f=기록)
+    x = s.add_parser("검토요청"); 편인자(x); x.add_argument("--주소", help="올린 영상 주소 (youtu.be/...)"); x.set_defaults(f=검토요청)
 
     a = p.parse_args()
     a.f(a)

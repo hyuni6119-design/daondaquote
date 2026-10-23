@@ -81,6 +81,11 @@ def conn():
         _conn.row_factory = sqlite3.Row
         _conn.execute("PRAGMA journal_mode=WAL")
         _conn.executescript(SCHEMA)
+        # 검토 칸 (검토대기 · 승인 · 다시만들기) — 예전 DB에도 붙여 줌
+        try:
+            _conn.execute("ALTER TABLE episodes ADD COLUMN review TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
     return _conn
 
 
@@ -119,6 +124,11 @@ def _decode(ep):
 def badge(ep):
     """한눈에 보는 상태 딱지"""
     steps = ep.get("steps") or {}
+    # PC가 비공개로 올리고 확인을 기다리는 편 (사이트에서 승인해야 예약 공개)
+    if ep.get("review") == "검토대기":
+        return "검토대기"
+    if ep.get("review") == "다시만들기":
+        return "다시만들기"
     if ep.get("video_id") or steps.get("업로드 예약") == "완료":
         if ep.get("date") and ep["date"] > today():
             return "예약됨"
@@ -170,7 +180,7 @@ def create_episode(channel, ep, **fields):
 
 EDITABLE = {"date", "minutes", "songs_done", "songs_total", "steps", "step_notes", "title",
             "description", "thumb_lines", "tags", "thumb", "block", "note", "video_id",
-            "privacy", "views", "likes", "stats_at"}
+            "privacy", "views", "likes", "stats_at", "review"}
 
 
 def update_episode(eid, fields):
