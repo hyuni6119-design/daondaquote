@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>영상 관리 — 들어가기</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-body">
+<form class="login-card" method="post" action="/login">
+  <h1>영상 관리</h1>
+  <p class="sub">황금주파수 TV · 불심명언</p>
+  <label for="pw">비밀번호</label>
+  <input id="pw" name="password" type="password" autocomplete="current-password" required autofocus>
+  <p class="err" id="err" hidden></p>
+  <button class="btn primary" type="submit">들어가기</button>
+</form>
+<script>
+  var e = new URLSearchParams(location.search).get("e");
+  if (e) {
+    var el = document.getElementById("err");
+    el.hidden = false;
+    el.textContent = e === "many" ? "너무 여러 번 틀렸습니다. 10분 뒤에 다시 해 주세요." : "비밀번호가 맞지 않습니다.";
+  }
+</script>
+</body>
+</html>

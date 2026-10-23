@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>영상 관리</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>영상 관리</h1>
+      <p class="sub">황금주파수 TV · 불심명언 — 편마다 썸네일, 제목, 진행상황을 한눈에 봅니다</p>
+    </div>
+    <a class="btn ghost small" href="/logout">나가기</a>
+  </header>
+
+  <!-- PC의 Claude가 지금 무엇을 하는지 -->
+  <section class="now" id="now">
+    <div class="now-head">
+      <span class="dot"></span>
+      <b id="nowState">PC 소식 기다리는 중</b>
+      <span class="muted small" id="nowAt"></span>
+    </div>
+    <div class="now-doing" id="nowDoing" hidden></div>
+    <div class="now-grid">
+      <div><div class="label">마지막으로 한 일</div><div id="nowLast">—</div></div>
+      <div><div class="label">다음에 할 일</div><div id="nowNext">—</div></div>
+    </div>
+    <div class="row gap">
+      <button class="btn primary" id="btnGo">이어서 진행</button>
+      <button class="btn" id="btnStop">잠깐 멈춤</button>
+      <span class="muted small" id="nowMsg"></span>
+    </div>
+  </section>
+
+  <section class="queue" id="queue" hidden></section>
+
+  <!-- 고르기 -->
+  <div class="toolbar">
+    <div class="tabs" id="chTabs"></div>
+    <div class="tabs" id="stTabs"></div>
+    <div class="spacer"></div>
+    <div class="tabs" id="viewTabs">
+      <button data-v="cards" class="on">카드</button>
+      <button data-v="cal">달력</button>
+    </div>
+    <button class="btn primary" id="btnAdd">＋ 새 편</button>
+  </div>
+
+  <div class="summary" id="summary"></div>
+
+  <main id="cards" class="cards"></main>
+  <main id="cal" class="cal" hidden>
+    <div class="cal-head">
+      <button class="btn small" id="prevM" aria-label="지난달">‹</button>
+      <b id="monthName"></b>
+      <button class="btn small" id="nextM" aria-label="다음달">›</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+  </main>
+
+  <section class="log">
+    <div class="row">
+      <h2>지나온 일</h2>
+      <div class="spacer"></div>
+      <button class="btn small" id="btnStats" hidden>조회수 새로고침</button>
+    </div>
+    <ol id="logList"></ol>
+  </section>
+</div>
+
+<!-- 편 자세히 보기 -->
+<dialog id="detail">
+  <form method="dialog" class="dlg-close"><button class="btn ghost small" aria-label="닫기">✕</button></form>
+  <div id="detailBody"></div>
+</dialog>
+
+<!-- 새 편 -->
+<dialog id="addDlg">
+  <form id="addForm" class="stack">
+    <h3>새 편을 넣습니다</h3>
+    <label>어느 채널 <select name="channel" id="addCh"></select></label>
+    <label>공개할 날 <input type="date" name="date" required></label>
+    <label class="check"><input type="checkbox" name="start" checked> 넣자마자 PC에게 "이 편 만들어" 시키기</label>
+    <p class="muted small">편 번호는 알아서 다음 번호로 붙입니다.</p>
+    <div class="row gap">
+      <button class="btn primary" type="submit">넣기</button>
+      <button class="btn" type="button" id="addCancel">닫기</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
