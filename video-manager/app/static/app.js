@@ -406,7 +406,7 @@
     // 검토 대기: 미리보기로 확인하고 승인 / 다시 만들기
     var review = e.review === "검토대기" ? h("div", { class: "st-review" }, [
       h("b", { text: "🕵 검토 대기 중" }),
-      h("p", { class: "small", text: "PC가 비공개로 올려 두었어요. ▶ 스튜디오에서 미리보기로 확인한 뒤 눌러 주세요. 승인하면 " + dotDate(e.date) + "에 맞춰 예약 공개로 바뀌어요." }),
+      h("p", { class: "small", text: "PC가 일부 공개로 올려 두었어요. 왼쪽 미리보기에서 바로 틀어 보고 눌러 주세요. 승인하면 " + dotDate(e.date) + "에 맞춰 예약 공개로 바뀌어요." }),
       h("div", { class: "row gap" }, [
         h("button", { type: "button", class: "btn primary", onclick: function () {
           if (!confirm(chInfo(e.channel).name + " " + e.ep + "편을 승인할까요? PC가 예약 공개로 바꿔요.")) return;

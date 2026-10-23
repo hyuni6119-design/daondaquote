@@ -124,7 +124,7 @@ def _decode(ep):
 def badge(ep):
     """한눈에 보는 상태 딱지"""
     steps = ep.get("steps") or {}
-    # PC가 비공개로 올리고 확인을 기다리는 편 (사이트에서 승인해야 예약 공개)
+    # PC가 일부 공개로 올리고 확인을 기다리는 편 (사이트에서 승인해야 예약 공개)
     if ep.get("review") == "검토대기":
         return "검토대기"
     if ep.get("review") == "다시만들기":

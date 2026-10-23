@@ -199,7 +199,7 @@ async def edit_request(eid: int, request: Request, _=Depends(need_user)):
 
 @app.post("/api/episodes/{eid}/approve")
 def approve(eid: int, _=Depends(need_user)):
-    """검토 대기 편을 승인 → PC가 비공개 영상을 공개 날짜에 맞춰 예약 공개로 바꿈"""
+    """검토 대기 편을 승인 → PC가 일부 공개 영상을 공개 날짜에 맞춰 예약 공개로 바꿈"""
     e = db.episode(eid)
     if not e:
         raise HTTPException(404)
