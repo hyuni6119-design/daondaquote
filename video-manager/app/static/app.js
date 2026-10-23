@@ -393,10 +393,16 @@
     ]);
 
     var yt = e.video_id ? "https://youtu.be/" + e.video_id : null;
+    // 미리보기: 공개 영상은 여기서 바로 재생. 예약·비공개 영상은 유튜브가 다른 사이트 안에서 안 틀어 줘서,
+    // 누르면 유튜브 스튜디오(채널 주인으로 로그인된 브라우저)에서 바로 볼 수 있게 엶
+    var studio = e.video_id ? "https://studio.youtube.com/video/" + e.video_id + "/edit" : null;
     var player = e.video_id && (e.privacy === "public" || e.privacy === "unlisted")
       ? h("iframe", { class: "st-player", src: "https://www.youtube.com/embed/" + e.video_id, title: "동영상 미리보기", allow: "encrypted-media; picture-in-picture", allowfullscreen: true })
-      : h("div", { class: "st-player st-player-img" }, [src ? h("img", { src: src, alt: "" }) : h("div", { class: "yt-nothumb", text: "미리보기 없음" }),
-          h("span", { class: "st-play", text: "▶" })]);
+      : h(studio ? "a" : "div", { class: "st-player st-player-img", href: studio, target: studio ? "_blank" : null, rel: studio ? "noopener" : null,
+          title: studio ? "유튜브 스튜디오에서 미리보기 (채널 주인으로 로그인된 브라우저에서 열려요)" : null },
+          [src ? h("img", { src: src, alt: "" }) : h("div", { class: "yt-nothumb", text: "미리보기 없음" }),
+           studio ? h("span", { class: "st-play", text: "▶" }) : null,
+           studio ? h("span", { class: "st-play-note", text: "눌러서 스튜디오에서 미리보기" }) : null]);
     var right = h("div", { class: "st-right" }, [
       h("div", { class: "st-card" }, [
         player,
@@ -414,6 +420,11 @@
             h("div", {}, [h("span", { class: "muted small", text: "길이 · 곡" }), h("b", { text: (e.minutes ? e.minutes + "분" : "—") + (e.songs_total ? " · " + (e.songs_done || 0) + "/" + e.songs_total + "곡" : "") })]),
             h("div", {}, [h("span", { class: "muted small", text: "진행" }), h("b", { text: (e.block ? "막힘 · " : "") + e.done_steps + "/" + META.steps.length + "단계 (" + e.badge + ")" })])
           ]),
+          studio ? h("div", { class: "row gap" }, [
+            h("a", { class: "btn small primary", href: studio, target: "_blank", rel: "noopener" }, ["▶ 스튜디오에서 미리보기"]),
+            h("a", { class: "btn small", href: yt, target: "_blank", rel: "noopener" }, ["유튜브에서 보기"])
+          ]) : null,
+          studio ? h("p", { class: "muted small", text: "예약·비공개 영상도 채널 주인 구글 계정으로 로그인된 브라우저에서는 볼 수 있어요. 다른 계정이면 ‘볼 수 없는 동영상’으로 나와요." }) : null,
           h("div", { class: "row gap" }, [
             h("button", { type: "button", class: "btn small", onclick: function () {
               api("POST", "/api/episodes/" + e.id + "/run").then(function () { toast("PC에게 시켰습니다"); refresh(); }); } },

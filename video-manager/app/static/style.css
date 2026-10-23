@@ -294,3 +294,6 @@ dialog.studio::backdrop { background: rgba(0,0,0,.5); }
   .st-right { position: static; }
   .st-main { padding: 14px 14px 40px; }
 }
+
+a.st-player-img { cursor: pointer; }
+.st-play-note { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; color: #fff; font-size: 12px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
