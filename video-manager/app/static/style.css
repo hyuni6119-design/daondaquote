@@ -406,3 +406,20 @@ dialog.studio { border-radius: 22px; background: var(--bg); }
 .rv-btn.no.on { background: var(--bad-bg); color: var(--bad); border-color: #ffc9d1; }
 .rv-memo { width: 100%; font-size: 13px; padding: 6px 10px; }
 .st-review .rv-sum { color: var(--text); font-weight: 600; }
+
+/* 검토할 영상 목록 */
+.rvq { margin-top: 16px; background: var(--card); border: 1px solid #ffc9d1; border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; }
+.rvq-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.rvq-head b { color: #e5484d; font-size: 16px; }
+.rvq-row { display: grid; grid-template-columns: 200px minmax(0, 1fr) minmax(300px, 380px); gap: 14px; align-items: start; padding-top: 12px; border-top: 1px solid var(--line2); }
+.rvq-thumb { position: relative; border: 0; padding: 0; cursor: pointer; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: var(--soft); color: var(--dim); font: inherit; font-size: 12px; }
+.rvq-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rvq-play { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 26px; background: rgba(0,0,0,.25); opacity: 0; transition: opacity .12s; }
+.rvq-thumb:hover .rvq-play { opacity: 1; }
+.rvq-info { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rvq-info .yt-desc { -webkit-line-clamp: 3; }
+.rv-check { display: flex; flex-direction: column; gap: 6px; }
+.rvq .rv-row { padding: 6px 10px; }
+.rvq .rv-line b { color: var(--text); font-size: 13.5px; }
+.rvq .rv-sum { margin: 0; font-size: 12.5px; color: var(--mid); font-weight: 600; }
+@media (max-width: 980px) { .rvq-row { grid-template-columns: 140px minmax(0, 1fr); } .rv-check { grid-column: 1 / -1; } }
