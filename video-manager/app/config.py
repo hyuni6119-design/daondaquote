@@ -15,6 +15,8 @@ API_TOKEN = os.environ.get("API_TOKEN", "")
 SECRET_KEY = os.environ.get("SECRET_KEY", "") or (API_TOKEN + ADMIN_PASSWORD) or "change-me"
 # 조회수 가져오기용 (선택). 구글 클라우드 콘솔의 "API 키"
 YT_API_KEY = os.environ.get("YT_API_KEY", "")
+# 이 날짜(YYYY-MM-DD)부터 공개되는 편만 사이트에 보여 줌 (그 전 편은 지우지 않고 숨김 · 비우면 모두 보임)
+SHOW_FROM = os.environ.get("SHOW_FROM", "")
 
 SEED_DIR = Path(os.environ.get("SEED_DIR", Path(__file__).resolve().parent.parent / "seed"))
 

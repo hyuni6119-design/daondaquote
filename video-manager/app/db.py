@@ -138,6 +138,9 @@ def episodes(channel=None):
         r = rows("SELECT * FROM episodes WHERE channel=? ORDER BY date DESC, ep DESC", (channel,))
     else:
         r = rows("SELECT * FROM episodes ORDER BY date DESC, ep DESC")
+    # SHOW_FROM 보다 앞선 편은 숨김 (날짜가 아직 없는 새 편은 보임)
+    if config.SHOW_FROM:
+        r = [e for e in r if not e["date"] or e["date"] >= config.SHOW_FROM]
     return [_decode(e) for e in r]
 
 
