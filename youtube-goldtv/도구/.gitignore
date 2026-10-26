@@ -5,3 +5,4 @@ client_secret-*.json
 인증토큰.json
 인증토큰-*.json
 __pycache__/
+관리사이트.json
