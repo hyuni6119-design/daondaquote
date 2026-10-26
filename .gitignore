@@ -14,3 +14,6 @@
 client_secret*.json
 api키.json
 *.bak
+
+# 만들어 보는 썸네일 벽보 (이미지는 커밋하지 않습니다)
+썸네일벽보-*.jpg
