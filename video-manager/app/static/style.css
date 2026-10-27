@@ -567,3 +567,7 @@ label.stack { gap: 6px; }
   .shop-row { grid-template-columns: 96px minmax(0, 1fr); } .shop-row .yt-thumb { width: 96px; }
   .set-ch { grid-template-columns: auto 1fr; } .set-q { width: 100%; }
 }
+
+/* 채널 → 메뉴: 고른 채널 아래로 메뉴가 들여 써져 펼쳐짐 */
+.sidebar-channels .side-nav { margin: 2px 0 10px 14px; padding-left: 8px; border-left: 2px solid rgba(255, 77, 109, .35); }
+.sidebar-channels .nav-item { padding: 7px 10px; font-size: 13.5px; }

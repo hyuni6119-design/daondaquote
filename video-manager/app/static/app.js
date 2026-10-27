@@ -2,6 +2,7 @@
   "use strict";
 
   var META = null, EPS = [], QUEUE = [], STATUS = {};
+  var SIDE_NAV = document.getElementById("sideNav");
   var view = { ch: "all", st: "all", mode: "list", month: null, open: null, tab: "details", sortAsc: false };
   try { var saved = JSON.parse(localStorage.getItem("vm-view") || "{}");
     ["ch", "st", "mode", "page"].forEach(function (k) { if (saved[k]) view[k] = saved[k]; });
@@ -106,16 +107,20 @@
     // 왼쪽 채널 목록 (라이브 관리자처럼) — 채널은 ＋ 로 늘릴 수 있음
     if (view.ch !== "all" && !META.channels.some(function (c) { return c.key === view.ch; })) view.ch = "all";
     var nav = $("channelNav"); nav.textContent = "";
+    var activeBtn = null;
     [{ key: "all", name: "전체 채널" }].concat(META.channels).forEach(function (c) {
       var n = EPS.filter(function (e) { return c.key === "all" || e.channel === c.key; }).length;
       var wait = EPS.filter(function (e) { return (c.key === "all" || e.channel === c.key) && e.review === "검토대기"; }).length;
-      nav.appendChild(h("button", { type: "button", class: "channel-item" + (view.ch === c.key ? " active" : ""),
-        onclick: function (ev) { if (ev.target.closest("[data-edit]")) return; view.ch = c.key; saveView(); $("sidebar").classList.remove("open"); drawAll(); } }, [
+      var btn = nav.appendChild(h("button", { type: "button", class: "channel-item" + (view.ch === c.key ? " active" : ""),
+        onclick: function (ev) { if (ev.target.closest("[data-edit]")) return; view.ch = c.key; saveView(); drawAll(); } }, [
         h("span", { class: "ci-name" }, [c.key === "all" ? null : h("i", { class: "ci-dot", style: "background:" + c.color }), c.display || c.name]),
         h("span", { class: "cnt" }, [wait ? h("b", { class: "ci-wait", title: "검토 대기", text: "🕵" + wait }) : null, String(n),
           c.key === "all" ? null : h("span", { class: "edit", "data-edit": c.key, title: "채널 이름·색 바꾸기", onclick: function () { openChannelDialog(c); } }, ["✎"])])
       ]));
+      if (view.ch === c.key) activeBtn = btn;
     });
+    // 고른 채널 바로 아래에 메뉴 (채널 → 메뉴 순서)
+    if (activeBtn) activeBtn.after(SIDE_NAV);
     var cur = META.channels.filter(function (c) { return c.key === view.ch; })[0];
     $("pageTitle").textContent = cur ? (cur.display || cur.name) : "전체 채널";
     $("pageSub").textContent = cur ? "이 채널의 편마다 썸네일, 제목, 진행상황을 봅니다" : META.channels.map(function (c) { return c.display || c.name; }).join(" · ") + " — 편마다 썸네일, 제목, 진행상황을 한눈에 봅니다";
@@ -894,13 +899,13 @@
   view.page = view.page || "list";
   function setPage(p) {
     view.page = p; saveView();
-    Array.prototype.forEach.call(document.querySelectorAll("#sideNav .nav-item"), function (b) { b.classList.toggle("active", b.dataset.page === p); });
+    Array.prototype.forEach.call(SIDE_NAV.querySelectorAll(".nav-item"), function (b) { b.classList.toggle("active", b.dataset.page === p); });
     Array.prototype.forEach.call(document.querySelectorAll(".page"), function (el) { el.hidden = el.id !== "page-" + p; });
     $("sidebar").classList.remove("open");
     drawPage();
     window.scrollTo(0, 0);
   }
-  $("sideNav").addEventListener("click", function (ev) { var b = ev.target.closest(".nav-item"); if (b) setPage(b.dataset.page); });
+  SIDE_NAV.addEventListener("click", function (ev) { var b = ev.target.closest(".nav-item"); if (b) setPage(b.dataset.page); });
   function chList() { return META.channels.filter(function (c) { return view.ch === "all" || c.key === view.ch; }); }
   function chEps() { return EPS.filter(function (e) { return view.ch === "all" || e.channel === view.ch; }); }
   function head(title, sub, right) {
