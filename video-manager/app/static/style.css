@@ -427,3 +427,31 @@ dialog.studio { border-radius: 22px; background: var(--bg); }
 /* 비공개(예약 없음) · 일부 공개 */
 .badge.비공개 { background: #eeedf3; color: #5f5b76; }
 .badge.일부공개 { background: #ebf1ff; color: #3b6fd8; }
+
+/* 영상 올리기 */
+.ups { margin-top: 16px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+.ups .rvq-head b { color: var(--gold); }
+.up-row { display: grid; grid-template-columns: auto minmax(0, 1fr) 48px auto; gap: 12px; align-items: center; padding-top: 10px; border-top: 1px solid var(--line2); }
+.up-row.bad .up-main .muted { color: var(--bad); }
+.up-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.up-main b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.up-bar { height: 6px; }
+dialog.updlg { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 40px); padding: 20px 22px; }
+.up-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.up-head h3 { margin: 0; }
+.up-sec { margin: 12px 0; display: flex; flex-direction: column; gap: 8px; }
+.up-sec label.inline { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.up-drop { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 110px; padding: 14px; border: 2px dashed var(--gold-line); border-radius: 14px; background: var(--gold-bg); text-align: center; cursor: pointer; }
+.up-drop:hover { border-color: var(--gold); }
+.up-drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.up-drop.small { min-height: 90px; }
+.up-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.up-thumb { width: 100%; max-width: 240px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; }
+.up-sec input[type=text], .up-sec textarea { width: 100%; box-sizing: border-box; }
+.up-alts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip { border: 1px solid var(--line); background: var(--soft); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12.5px; cursor: pointer; text-align: left; }
+.chip:hover { border-color: var(--gold); }
+.up-foot { align-items: center; flex-wrap: wrap; }
+.up-foot .spacer { flex: 1; }
+.small.bad { color: var(--bad); }
+@media (max-width: 640px) { .up-two { grid-template-columns: 1fr; } .up-row { grid-template-columns: auto minmax(0, 1fr); } }

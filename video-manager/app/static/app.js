@@ -678,9 +678,183 @@
     }
   }
 
+  // ------------------------------------------------------------ 영상 올리기 (사이트에서 직접)
+  // 영상 파일은 8MB 조각으로 서버에 받아 두고(끊기면 이어서), 「유튜브로 올리기」를 누르면
+  // 라이브 관리자 서버의 일꾼이 1분 안에 일부 공개로 올리고 그 편을 검토대기로 만듭니다.
+  var UPS = [];
+  var UP_CHUNK = 8 * 1024 * 1024;
+  var upFiles = {};      // 올리기 번호 → 고른 영상 파일 (이어 올리기용)
+  var upSending = {};    // 올리기 번호 → 지금 조각 보내는 중
+  var UP_STATE = { "받는중": "서버로 받는 중", "준비": "올릴 준비 됨", "대기": "유튜브 차례 기다림", "올리는중": "유튜브로 올리는 중", "올림": "올림 · 검토대기", "실패": "실패" };
+
+  function gb(n) { return (n / 1073741824).toFixed(2) + "GB"; }
+
+  function sendVideo(u, file) {
+    if (upSending[u.id]) return;
+    upSending[u.id] = true;
+    upFiles[u.id] = file;
+    var pos = u.received || 0;
+    function step() {
+      if (pos >= file.size) { upSending[u.id] = false; refreshUploads(); return; }
+      var end = Math.min(pos + UP_CHUNK, file.size);
+      fetch("/api/uploads/" + u.id + "/video?offset=" + pos, { method: "PUT", body: file.slice(pos, end) })
+        .then(function (r) {
+          if (r.status === 409) return r.json().then(function (d) { var x = {}; try { x = JSON.parse(d.detail); } catch (e) { /* 다른 오류 */ } if (x.received == null) throw new Error(d.detail); pos = x.received; });
+          if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || "받기 실패"); });
+          return r.json().then(function (nu) { pos = nu.received; u.received = nu.received; upProgress(u.id, nu.received / nu.size); });
+        })
+        .then(step)
+        .catch(function (err) {
+          upSending[u.id] = false;
+          toast("영상 받기가 끊겼어요: " + err.message + " — 「이어 올리기」를 눌러 주세요");
+          refreshUploads();
+        });
+    }
+    step();
+  }
+  function upProgress(id, frac) {
+    document.querySelectorAll('[data-upbar="' + id + '"]').forEach(function (b) { b.style.width = Math.round(frac * 100) + "%"; });
+    document.querySelectorAll('[data-uptxt="' + id + '"]').forEach(function (t) { t.textContent = Math.round(frac * 100) + "%"; });
+  }
+
+  function refreshUploads() {
+    return api("GET", "/api/uploads").then(function (list) {
+      UPS = list;
+      drawUploads();
+      // 일꾼을 기다리는 게 있으면 5초마다 다시 봄
+      clearTimeout(refreshUploads.t);
+      if (UPS.some(function (u) { return u.state === "대기" || u.state === "올리는중" || u.draft === "요청"; })) refreshUploads.t = setTimeout(refreshUploads, 5000);
+      if (upOpen && $("upDlg").open) drawUpDialog();
+    }).catch(function () { /* 다음에 */ });
+  }
+
+  function drawUploads() {
+    var box = $("upBox");
+    var recent = UPS.filter(function (u) { return u.state !== "올림" || Date.now() - new Date(u.updated_at).getTime() < 864e5; });
+    box.hidden = !recent.length;
+    box.innerHTML = "";
+    if (!recent.length) return;
+    box.appendChild(h("div", { class: "rvq-head" }, [h("b", { text: "⬆ 올리는 영상 " + recent.length + "개" }), h("span", { class: "muted small", text: "다 올라가면 그 편이 🕵 검토할 영상에 떠요" })]));
+    recent.forEach(function (u) {
+      var frac = u.state === "올리는중" || u.state === "올림" ? (u.progress || 0) / 100 : (u.size ? u.received / u.size : 0);
+      var stuck = u.state === "받는중" && !upSending[u.id];
+      box.appendChild(h("div", { class: "up-row" + (u.state === "실패" ? " bad" : "") }, [
+        h("span", { class: "ch", style: "background:" + chInfo(u.channel).color, text: chInfo(u.channel).name }),
+        h("div", { class: "up-main" }, [
+          h("b", { text: u.title || u.filename || "제목 없음" }),
+          h("div", { class: "muted small", text: (UP_STATE[u.state] || u.state) + " · " + dotDate(u.date) + (u.error ? " · " + u.error : "") + (u.youtube_id ? " · youtu.be/" + u.youtube_id : "") }),
+          h("div", { class: "bar up-bar" }, [h("i", { "data-upbar": u.id, style: "width:" + Math.round(frac * 100) + "%" })])
+        ]),
+        h("span", { class: "small", "data-uptxt": u.id, text: Math.round(frac * 100) + "%" }),
+        h("button", { type: "button", class: "btn small", onclick: function () { openUpload(u.id); } }, [stuck ? "이어 올리기" : u.state === "실패" ? "다시 보기" : "열기"])
+      ]));
+    });
+  }
+
+  var upOpen = null; // 열어 둔 올리기 번호 (새로 만들 때는 "new")
+  function openUpload(id) { upOpen = id || "new"; drawUpDialog(); if (!$("upDlg").open) $("upDlg").showModal(); }
+
+  function drawUpDialog() {
+    var body = $("upBody");
+    var u = upOpen === "new" ? null : UPS.filter(function (x) { return x.id === upOpen; })[0];
+    if (body.contains(document.activeElement) && document.activeElement.tagName !== "BUTTON") return; // 쓰는 중에는 다시 그리지 않음
+    body.innerHTML = "";
+    var close = function () { $("upDlg").close(); upOpen = null; };
+    var head = h("div", { class: "up-head" }, [h("h3", { text: u ? "영상 올리기 · " + chInfo(u.channel).name : "⬆ 영상 올리기" }), h("button", { type: "button", class: "yt-ic", onclick: close }, ["✕"])]);
+    body.appendChild(head);
+
+    // 1) 채널 · 날짜 · 영상 파일
+    var chSel = h("select", {}, META.channels.map(function (c) { return h("option", { value: c.key, text: c.name }); }));
+    var dateIn = h("input", { type: "date", value: (u && u.date) || "" });
+    if (u) { chSel.value = u.channel; chSel.disabled = true; }
+    var fileIn = h("input", { type: "file", accept: "video/mp4,video/*" });
+    var drop = h("label", { class: "up-drop" }, [fileIn, h("b", { text: u ? (u.received >= u.size ? "✅ " + u.filename + " (" + gb(u.size) + ") 서버에 다 받음" : "🎬 " + u.filename + " — 같은 파일을 다시 골라 이어 올리기") : "🎬 영상 파일을 끌어다 놓거나 눌러서 고르기" }),
+      h("span", { class: "muted small", text: "mp4 · 8GB까지 · 올리는 동안 이 창은 닫아도 되지만 사이트 탭은 열어 두세요" })]);
+    var bar = u ? h("div", { class: "bar up-bar" }, [h("i", { "data-upbar": u.id, style: "width:" + Math.round((u.size ? u.received / u.size : 0) * 100) + "%" })]) : null;
+    fileIn.addEventListener("change", function () {
+      var f = fileIn.files[0];
+      if (!f) return;
+      if (u) {
+        if (f.size !== u.size) return toast("처음 고른 파일과 크기가 달라요. 같은 파일을 골라 주세요");
+        sendVideo(u, f); return;
+      }
+      if (!dateIn.value) { fileIn.value = ""; return toast("먼저 공개 날짜를 골라 주세요"); }
+      api("POST", "/api/uploads", { channel: chSel.value, date: dateIn.value, filename: f.name, size: f.size }).then(function (nu) {
+        UPS.unshift(nu); upOpen = nu.id; sendVideo(nu, f); drawUpDialog(); drawUploads();
+      }).catch(function (err) { toast(err.message); });
+    });
+    body.appendChild(h("div", { class: "up-sec" }, [
+      h("div", { class: "row gap" }, [h("label", { class: "inline" }, ["채널 ", chSel]), h("label", { class: "inline" }, ["공개 날짜 ", dateIn])]),
+      drop, bar
+    ]));
+    if (!u) { body.appendChild(h("p", { class: "muted small", text: "채널과 공개 날짜를 고르고 영상 파일을 넣으면 서버로 받기 시작해요. 그다음 썸네일·제목을 넣어요." })); return; }
+
+    dateIn.addEventListener("change", function () { api("PATCH", "/api/uploads/" + u.id, { date: dateIn.value }).then(function (x) { u.date = x.date; }); });
+
+    // 2) 썸네일 · 수록곡.json
+    var thIn = h("input", { type: "file", accept: "image/jpeg,image/png" });
+    var chIn = h("input", { type: "file", accept: ".json,application/json" });
+    thIn.addEventListener("change", function () {
+      var fd = new FormData(); fd.append("file", thIn.files[0]);
+      api("POST", "/api/uploads/" + u.id + "/thumb", fd).then(function () { toast("썸네일을 넣었어요"); refreshUploads(); }).catch(function (err) { toast(err.message); });
+    });
+    chIn.addEventListener("change", function () {
+      var fd = new FormData(); fd.append("file", chIn.files[0]);
+      api("POST", "/api/uploads/" + u.id + "/chapters", fd).then(function (x) { toast("수록곡 " + x.chapters.length + "줄을 넣었어요 — AI 초안을 누르면 설명에 챕터가 들어가요"); refreshUploads(); }).catch(function (err) { toast(err.message); });
+    });
+    body.appendChild(h("div", { class: "up-sec up-two" }, [
+      h("label", { class: "up-drop small" }, [thIn, u.thumb ? h("img", { class: "up-thumb", src: "/api/uploads/" + u.id + "/thumb?v=" + encodeURIComponent(u.updated_at) }) : null, h("b", { text: u.thumb ? "🖼 썸네일 바꾸기" : "🖼 썸네일 넣기 (jpg·png)" })]),
+      h("label", { class: "up-drop small" }, [chIn, h("b", { text: u.chapters && u.chapters.length ? "🕐 수록곡 " + u.chapters.length + "줄 들어감" : "🕐 수록곡.json 넣기 (챕터)" }), h("span", { class: "muted small", text: "두번붙이기.py 가 남긴 파일" })])
+    ]));
+
+    // 3) 제목 · 설명 · 태그 (AI 초안)
+    var tIn = h("input", { type: "text", maxlength: "100", value: u.title || "", placeholder: "제목 (100자까지)" });
+    var dIn = h("textarea", { rows: "10", placeholder: "설명" }); dIn.value = u.description || "";
+    var gIn = h("input", { type: "text", value: (u.tags || []).join(", "), placeholder: "태그 (쉼표로 나눔)" });
+    var save = function () { return api("PATCH", "/api/uploads/" + u.id, { title: tIn.value.trim(), description: dIn.value, tags: gIn.value.split(",").map(function (x) { return x.trim(); }).filter(Boolean) }); };
+    [tIn, dIn, gIn].forEach(function (x) { x.addEventListener("change", function () { save().catch(function (err) { toast(err.message); }); }); });
+    var drafting = u.draft === "요청";
+    var aiBtn = h("button", { type: "button", class: "btn", disabled: drafting, onclick: function () {
+      save().then(function () { return api("POST", "/api/uploads/" + u.id + "/draft"); }).then(function () { toast("AI가 초안을 쓰는 중이에요 (1분쯤)"); refreshUploads(); }).catch(function (err) { toast(err.message); });
+    } }, [drafting ? "✨ AI가 쓰는 중…" : "✨ AI 초안"]);
+    var alts = String(u.draft_note || "").split("\n").filter(Boolean);
+    body.appendChild(h("div", { class: "up-sec stack" }, [
+      h("div", { class: "row gap" }, [h("b", { text: "제목 · 설명 · 태그" }), aiBtn, u.draft === "실패" ? h("span", { class: "small bad", text: "AI 초안 실패: " + u.draft_note }) : null]),
+      tIn,
+      u.draft === "완료" && alts.length ? h("div", { class: "up-alts" }, [h("span", { class: "muted small", text: "다른 제목 후보 (누르면 바뀜)" })].concat(alts.map(function (t) {
+        return h("button", { type: "button", class: "chip", onclick: function () { tIn.value = t; save(); } }, [t]);
+      }))) : null,
+      dIn, gIn,
+      h("p", { class: "muted small", text: "올릴 때 함께 넣는 것: 카테고리 음악 · 아동용 아님 · AI 변경 콘텐츠 「예」 · 일부 공개. 제품 태그·수익 창출은 올린 뒤 PC 웨일이 붙여요." })
+    ]));
+
+    // 4) 유튜브로 올리기
+    var ready = u.received >= u.size;
+    var canGo = ready && (u.state === "준비" || u.state === "실패");
+    var foot = h("div", { class: "row gap up-foot" }, [
+      h("button", { type: "button", class: "btn primary", disabled: !canGo, onclick: function () {
+        if (!tIn.value.trim()) return toast("제목을 써 주세요");
+        if (!confirm(chInfo(u.channel).name + " 채널에 일부 공개로 올릴까요?\n(링크를 아는 사람만 볼 수 있고, 사이트에서 승인해야 " + dotDate(u.date) + " 21:00 예약 공개로 바뀌어요)")) return;
+        save().then(function () { return api("POST", "/api/uploads/" + u.id + "/go"); }).then(function () { toast("유튜브로 보내요 — 1분 안에 시작해요"); close(); refreshUploads(); refresh(); }).catch(function (err) { toast(err.message); });
+      } }, [u.state === "대기" || u.state === "올리는중" ? "유튜브로 보내는 중…" : u.state === "올림" ? "✅ 올림" : u.state === "실패" ? "다시 올리기" : "⬆ 유튜브로 올리기 (일부 공개)"]),
+      !ready ? h("span", { class: "muted small", text: "영상 파일을 서버로 받는 중이에요 — 다 받으면 누를 수 있어요" }) : null,
+      h("span", { class: "spacer" }),
+      u.state !== "올리는중" ? h("button", { type: "button", class: "btn small", onclick: function () {
+        if (!confirm("이 올리기를 지울까요? (서버에 받아 둔 파일도 지워요 · 이미 유튜브에 올라간 영상은 그대로)")) return;
+        api("DELETE", "/api/uploads/" + u.id).then(function () { close(); refreshUploads(); });
+      } }, ["지우기"]) : null
+    ]);
+    body.appendChild(foot);
+  }
+
+  $("btnUp").addEventListener("click", function () { openUpload(null); });
+  $("upDlg").addEventListener("close", function () { upOpen = null; });
+  // 창 전체 어디에 끌어다 놓아도 브라우저가 파일을 열지 않게
+  ["dragover", "drop"].forEach(function (ev) { $("upDlg").addEventListener(ev, function (e) { if (e.target.type !== "file") e.preventDefault(); }); });
+
   function refresh() {
     return Promise.all([api("GET", "/api/episodes"), api("GET", "/api/queue"), api("GET", "/api/status"), api("GET", "/api/log")])
-      .then(function (r) { EPS = r[0]; QUEUE = r[1]; STATUS = r[2]; drawAll(); drawLog(r[3]); })
+      .then(function (r) { EPS = r[0]; QUEUE = r[1]; STATUS = r[2]; drawAll(); drawLog(r[3]); refreshUploads(); })
       .catch(function (err) { if (err.message !== "login") toast("불러오지 못했습니다: " + err.message); });
   }
 

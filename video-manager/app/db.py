@@ -82,6 +82,7 @@ def conn():
         _conn.execute("PRAGMA journal_mode=WAL")
         _conn.executescript(SCHEMA)
         # 검토 칸 (검토대기 · 승인 · 다시만들기) — 예전 DB에도 붙여 줌
+        _conn.executescript(UPLOAD_SCHEMA)
         for col in ("review TEXT DEFAULT ''", "publish_at TEXT DEFAULT ''"):  # 예전 DB에도 붙여 줌
             try:
                 _conn.execute("ALTER TABLE episodes ADD COLUMN " + col)
@@ -169,6 +170,10 @@ def episodes(channel=None):
 
 def episode(eid):
     return _decode(one("SELECT * FROM episodes WHERE id=?", (eid,)))
+
+
+def episode_by_date(channel, date):
+    return _decode(one("SELECT * FROM episodes WHERE channel=? AND date=? ORDER BY ep DESC", (channel, date)))
 
 
 def episode_by(channel, ep):
@@ -329,3 +334,76 @@ def seed_if_empty():
     if n:
         add_log(f"기존 작업 대시보드에서 {n}편을 옮겨 왔습니다")
     return n
+
+
+# ---------------------------------------------------------------- 사이트에서 직접 올리기
+# state: 받는중(파일 받는 중) → 준비(파일 다 받음) → 대기(유튜브로 보낼 차례) → 올리는중 → 올림 / 실패
+# draft: '' · 요청(AI 초안 기다림) · 완료 · 실패
+
+UPLOAD_SCHEMA = """
+CREATE TABLE IF NOT EXISTS uploads (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  channel TEXT NOT NULL,
+  date TEXT DEFAULT '',
+  filename TEXT DEFAULT '',
+  size INTEGER DEFAULT 0,
+  received INTEGER DEFAULT 0,
+  state TEXT DEFAULT '받는중',
+  progress INTEGER DEFAULT 0,
+  title TEXT DEFAULT '',
+  description TEXT DEFAULT '',
+  tags TEXT DEFAULT '[]',
+  thumb TEXT DEFAULT '',
+  chapters TEXT DEFAULT '[]',
+  draft TEXT DEFAULT '',
+  draft_note TEXT DEFAULT '',
+  youtube_id TEXT DEFAULT '',
+  episode_id INTEGER,
+  error TEXT DEFAULT '',
+  created_at TEXT,
+  updated_at TEXT
+);
+"""
+UPLOAD_JSON = ("tags", "chapters")
+
+
+def _udecode(u):
+    if not u:
+        return u
+    for f in UPLOAD_JSON:
+        try:
+            u[f] = json.loads(u.get(f) or "[]")
+        except ValueError:
+            u[f] = []
+    return u
+
+
+def upload(uid):
+    return _udecode(one("SELECT * FROM uploads WHERE id=?", (uid,)))
+
+
+def uploads(limit=30):
+    return [_udecode(u) for u in rows("SELECT * FROM uploads ORDER BY id DESC LIMIT ?", (limit,))]
+
+
+def create_upload(channel, date, filename, size):
+    t = now()
+    cur = q("INSERT INTO uploads (channel, date, filename, size, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+            (channel, date, filename, size, t, t))
+    return upload(cur.lastrowid)
+
+
+def update_upload(uid, fields):
+    sets, args = [], []
+    for k, v in fields.items():
+        if k in UPLOAD_JSON:
+            v = json.dumps(v, ensure_ascii=False)
+        sets.append(f"{k}=?")
+        args.append(v)
+    if sets:
+        q(f"UPDATE uploads SET {', '.join(sets)}, updated_at=? WHERE id=?", (*args, now(), uid))
+    return upload(uid)
+
+
+def delete_upload(uid):
+    q("DELETE FROM uploads WHERE id=?", (uid,))

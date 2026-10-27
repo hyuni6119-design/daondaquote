@@ -45,6 +45,8 @@
 
   <section class="rvq" id="reviewBox" hidden></section>
 
+  <section class="ups" id="upBox" hidden></section>
+
   <!-- 고르기 -->
   <div class="toolbar">
     <div class="tabs" id="chTabs"></div>
@@ -55,7 +57,8 @@
       <button data-v="cards">카드</button>
       <button data-v="cal">달력</button>
     </div>
-    <button class="btn primary" id="btnAdd">＋ 새 편</button>
+    <button class="btn primary" id="btnUp">⬆ 영상 올리기</button>
+    <button class="btn" id="btnAdd">＋ 새 편</button>
   </div>
 
   <div class="summary" id="summary"></div>
@@ -110,6 +113,11 @@
       <button class="btn" type="button" id="addCancel">닫기</button>
     </div>
   </form>
+</dialog>
+
+<!-- 영상 올리기 -->
+<dialog id="upDlg" class="updlg">
+  <div id="upBody"></div>
 </dialog>
 
 <div class="toast" id="toast" hidden></div>

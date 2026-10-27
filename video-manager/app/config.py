@@ -6,6 +6,8 @@ from pathlib import Path
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 DB_PATH = DATA_DIR / "manager.db"
 THUMB_DIR = DATA_DIR / "thumbs"
+# 사이트에서 직접 올리는 영상을 잠깐 두는 곳 (라이브 관리자 서버의 올리기 일꾼과 같이 씀 · 올린 뒤 지움)
+UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/srv/vm-uploads"))
 
 # 사이트에 들어갈 때 쓰는 비밀번호
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
@@ -39,6 +41,10 @@ STEPS = [
     "업로드 예약",
 ]
 STEP_STATES = ["작업대기", "작업중", "완료", "막힘"]
+
+
+def channel_name(key):
+    return next((c["name"] for c in CHANNELS if c["key"] == key), key)
 
 
 def channel_key(value):

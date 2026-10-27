@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from . import config, db
+from .uploads import make_router
 
 STATIC = Path(__file__).resolve().parent / "static"
 THUMB_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
@@ -41,6 +42,9 @@ def need_user(request: Request):
     if _same(token, config.API_TOKEN):
         return "pc"
     raise HTTPException(401, "로그인이 필요합니다")
+
+
+app.include_router(make_router(need_user))  # 사이트에서 직접 올리기 (uploads.py)
 
 
 # ---------------------------------------------------------------- 화면
@@ -199,12 +203,12 @@ async def edit_request(eid: int, request: Request, _=Depends(need_user)):
 
 @app.post("/api/episodes/{eid}/approve")
 def approve(eid: int, _=Depends(need_user)):
-    """검토 대기 편을 승인 → PC가 일부 공개 영상을 공개 날짜에 맞춰 예약 공개로 바꿈"""
+    """검토 대기 편을 승인 → 서버 일꾼(라이브 관리자 tools/vm-upload.js)이 1분 안에 공개 날짜 21:00 예약 공개로 바꿈"""
     e = db.episode(eid)
     if not e:
         raise HTTPException(404)
     db.update_episode(eid, {"review": "승인"})
-    db.add_log(f"{_name(e['channel'])} {e['ep']}편을 승인했습니다 (예약 공개로 바꾸기를 PC에게 시킴)")
+    db.add_log(f"{_name(e['channel'])} {e['ep']}편을 승인했습니다 (1분 안에 {e.get('date') or '공개 날짜'} 21:00 예약 공개로 바뀝니다)")
     return db.add_queue("승인", eid, f"{_name(e['channel'])} {e['ep']}편 승인 — 예약 공개로 바꾸기",
                         {"video_id": e.get("video_id"), "date": e.get("date")})
 
