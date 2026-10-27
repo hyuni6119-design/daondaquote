@@ -502,3 +502,7 @@ details.log ol { max-height: 260px; overflow-y: auto; margin-top: 8px; }
 details.log li { padding: 5px 2px; font-size: 12.5px; }
 #chForm input[type=color] { width: 52px; height: 34px; padding: 2px; border-radius: 10px; cursor: pointer; }
 #chForm label.row { align-items: center; }
+
+/* 썸네일은 어디서나 16:9 그대로 · 잘리지 않게 (옆 칸 높이에 늘어나지 않게 고정) */
+.st-thumb-now, .yt-thumb, .thumb, .rvq-thumb, .up-thumb, .cal-ep img { aspect-ratio: 16 / 9 !important; height: auto !important; align-self: flex-start; }
+.st-thumb-now img, .yt-thumb img, .thumb img, .rvq-thumb img, .st-player-img img, .cal-ep img, .up-thumb { object-fit: contain !important; background: #111; }
