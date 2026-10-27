@@ -1099,13 +1099,17 @@
       ])];
       if (rf.note) kids.push(h("span", { class: "muted small", text: "메모: " + rf.note }));
       if (rf.error) kids.push(h("span", { class: "small set-bad", text: rf.error }));
-      if (ci.top && ci.top.length) {
-        kids.push(h("div", { class: "ref-top" }, ci.top.slice(0, 4).map(function (v) {
-          return h("a", { class: "ref-vid", href: "https://youtu.be/" + v.id, target: "_blank", rel: "noopener" }, [
-            h("div", { class: "yt-thumb" }, [h("img", { src: "https://i.ytimg.com/vi/" + v.id + "/mqdefault.jpg", alt: "" })]),
-            h("span", { class: "small", text: v.title }), h("span", { class: "muted small", text: "조회수 " + v.views.toLocaleString() + " · " + v.min + "분" })]);
-        })));
-      }
+      var vidCard = function (v) {
+        return h("a", { class: "ref-vid", href: "https://youtu.be/" + v.id, target: "_blank", rel: "noopener" }, [
+          h("div", { class: "yt-thumb" }, [h("img", { src: "https://i.ytimg.com/vi/" + v.id + "/mqdefault.jpg", alt: "" })]),
+          h("span", { class: "small", text: v.title }),
+          h("span", { class: "muted small", text: "📅 " + dotDate(v.date) + " 올림 · 조회수 " + v.views.toLocaleString() + " · " + (v.live ? "라이브" : v.min + "분") })]);
+      };
+      if (ci.every || ci.last) kids.push(h("div", { class: "ref-cad" }, [
+        ci.last ? h("span", { text: "마지막 업로드 " + dotDate(ci.last) }) : null,
+        ci.every ? h("span", { text: "평균 " + ci.every + "일마다 올림" }) : null]));
+      if (ci.top && ci.top.length) kids.push(h("details", { class: "ti-desc", open: true }, [h("summary", { class: "small", text: "인기 영상 (조회수 순)" }), h("div", { class: "ref-top" }, ci.top.map(vidCard))]));
+      if (ci.recent && ci.recent.length) kids.push(h("details", { class: "ti-desc" }, [h("summary", { class: "small", text: "최근 올린 영상 (올린 날 순)" }), h("div", { class: "ref-top" }, ci.recent.map(vidCard))]));
       if (rf.state === "완료") {
         REF_KEYS.forEach(function (k) {
           if (!res[k[0]]) return;
