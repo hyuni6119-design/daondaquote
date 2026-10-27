@@ -82,10 +82,11 @@ def conn():
         _conn.execute("PRAGMA journal_mode=WAL")
         _conn.executescript(SCHEMA)
         # 검토 칸 (검토대기 · 승인 · 다시만들기) — 예전 DB에도 붙여 줌
-        try:
-            _conn.execute("ALTER TABLE episodes ADD COLUMN review TEXT DEFAULT ''")
-        except sqlite3.OperationalError:
-            pass
+        for col in ("review TEXT DEFAULT ''", "publish_at TEXT DEFAULT ''"):  # 예전 DB에도 붙여 줌
+            try:
+                _conn.execute("ALTER TABLE episodes ADD COLUMN " + col)
+            except sqlite3.OperationalError:
+                pass
     return _conn
 
 
@@ -132,6 +133,16 @@ def badge(ep):
     if ep.get("review") == "고치는중":
         return "고치는중"
     if ep.get("video_id") or steps.get("업로드 예약") == "완료":
+        # 유튜브에서 읽어 온 실제 상태가 있으면 그것대로 (조회수 채우기가 3시간마다 privacy·publish_at 을 넣음)
+        pv = ep.get("privacy") or ""
+        if pv == "public":
+            return "공개됨"
+        if pv == "private" and not ep.get("publish_at"):
+            return "비공개"
+        if pv == "unlisted":
+            return "일부공개"
+        if pv == "private":
+            return "예약됨"
         if ep.get("date") and ep["date"] > today():
             return "예약됨"
         return "공개됨"
@@ -182,7 +193,7 @@ def create_episode(channel, ep, **fields):
 
 EDITABLE = {"date", "minutes", "songs_done", "songs_total", "steps", "step_notes", "title",
             "description", "thumb_lines", "tags", "thumb", "block", "note", "video_id",
-            "privacy", "views", "likes", "stats_at", "review"}
+            "privacy", "views", "likes", "stats_at", "review", "publish_at"}
 
 
 def update_episode(eid, fields):

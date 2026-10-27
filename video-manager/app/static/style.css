@@ -423,3 +423,7 @@ dialog.studio { border-radius: 22px; background: var(--bg); }
 .rvq .rv-line b { color: var(--text); font-size: 13.5px; }
 .rvq .rv-sum { margin: 0; font-size: 12.5px; color: var(--mid); font-weight: 600; }
 @media (max-width: 980px) { .rvq-row { grid-template-columns: 140px minmax(0, 1fr); } .rv-check { grid-column: 1 / -1; } }
+
+/* 비공개(예약 없음) · 일부 공개 */
+.badge.비공개 { background: #eeedf3; color: #5f5b76; }
+.badge.일부공개 { background: #ebf1ff; color: #3b6fd8; }

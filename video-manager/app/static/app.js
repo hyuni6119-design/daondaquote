@@ -7,7 +7,7 @@
     ["ch", "st", "mode"].forEach(function (k) { if (saved[k]) view[k] = saved[k]; });
     if (saved.v2 !== 1) view.mode = "list"; } catch (e) {} // 처음 한 번은 새 목록 보기로
 
-  var BADGES = ["검토대기", "다시만들기", "고치는중", "제작중", "막힘", "완료", "예약됨", "공개됨", "준비"];
+  var BADGES = ["검토대기", "다시만들기", "고치는중", "제작중", "막힘", "완료", "예약됨", "공개됨", "비공개", "일부공개", "준비"];
   var DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
   // ------------------------------------------------------------ 도우미
@@ -145,6 +145,7 @@
   function dateLabel(e) {
     if (e.badge === "공개됨" || e.privacy === "public") return "게시일";
     if (e.badge === "예약됨") return "예약";
+    if (e.badge === "비공개") return "예약 없음 (원래 공개일)";
     return "공개 예정";
   }
   function dotDate(d) {
