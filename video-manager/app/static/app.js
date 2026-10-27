@@ -3,10 +3,10 @@
 
   var META = null, EPS = [], QUEUE = [], STATUS = {};
   var SIDE_NAV = document.getElementById("sideNav");
-  var TOOL_PAGES = { refs: 1, lyrics: 1, log: 1, settings: 1 }; // 채널과 따로 있는 메뉴
+  var TOOL_PAGES = { refs: 1, log: 1, settings: 1 }; // 채널과 따로 있는 메뉴
   var TOOL_SUB = { refs: "레퍼런스 채널을 분석해서 프롬프트를 만들어요 (채널과 따로)", lyrics: "참고 가사로 수노에 넣을 새 가사를 만들어요 (채널과 따로)",
     log: "사이트·서버·PC가 한 일", settings: "서버 일꾼 · 저장 공간 · 채널 연결" };
-  var OLD_PAGE = { upload: "make", titles: "make", rules: "chset", prompts: "chset", thumbs: "list", shop: "list" }; // 예전 메뉴 → 새 메뉴
+  var OLD_PAGE = { upload: "make", titles: "make", rules: "chset", prompts: "chset", thumbs: "list", shop: "list", lyrics: "chset" }; // 예전 메뉴 → 새 메뉴
   var UP_PRESET = null; // 🎬 새 영상 만들기에서 올리기 창을 열 때 채널·날짜 미리 채움
   var view = { ch: "all", st: "all", mode: "list", month: null, open: null, tab: "details", sortAsc: false };
   try { var saved = JSON.parse(localStorage.getItem("vm-view") || "{}");
@@ -1062,7 +1062,7 @@
   function drawPromptsPage(box) {
     if (box.contains(document.activeElement) && /TEXTAREA|INPUT/.test(document.activeElement.tagName)) return; // 쓰는 중에는 다시 그리지 않음
     box.innerHTML = "";
-    box.appendChild(head("프롬프트", "채널마다 AI에게 줄 프롬프트예요. 영상을 만들 때(가사·썸네일·영상 그림·제목·설명) 이 내용을 그대로 따라요. 🔍 채널 분석에서 레퍼런스 채널 결과를 한 번에 넣을 수도 있어요."));
+    box.appendChild(head("프롬프트", "채널마다 AI에게 줄 프롬프트예요. 영상을 만들 때(가사·썸네일·영상 그림·제목·설명) 이 내용을 그대로 따라요. 🔍 채널 분석에서 레퍼런스 채널 결과를 한 번에 넣을 수도 있어요. 가사 프롬프트는 맨 아래 「🎵 참고 가사로…」로도 만들 수 있어요."));
     chList().forEach(function (c) {
       var r = RULES[c.key] || {};
       var f = {};
@@ -1149,12 +1149,12 @@
     });
   }
 
-  function copyBtn(text) {
+  function copyBtn(text, label) {
     return h("button", { type: "button", class: "btn small copy-btn", onclick: function () {
       var done = function () { toast("복사했어요 — 붙여 넣기(Ctrl+V) 하세요"); };
       if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
       else { fallbackCopy(text); done(); }
-    } }, ["📋 복사"]);
+    } }, [label || "📋 복사"]);
   }
   function fallbackCopy(text) {
     var t = h("textarea", {}); t.value = text; document.body.appendChild(t); t.select();
@@ -1196,6 +1196,7 @@
     var title = h("input", { type: "text", class: "ref-url", placeholder: "참고 노래 제목 (선택)", oninput: function () { LY_DRAFT.title = title.value; } });
     var lyr = h("textarea", { rows: "10", placeholder: "참고할 가사를 여기에 붙여 넣으세요 (한 소절만 넣어도 돼요)", oninput: function () { LY_DRAFT.ref = lyr.value; } });
     var topic = h("input", { type: "text", class: "ref-url", placeholder: "새 노래 주제 (선택) — 예) 돌아가신 어머니께 드리는 기도", oninput: function () { LY_DRAFT.topic = topic.value; } });
+    if (LY_DRAFT.ch == null && view.ch !== "all") LY_DRAFT.ch = view.ch;
     var ch = h("select", { class: "ref-url", onchange: function () { LY_DRAFT.ch = ch.value; } }, [h("option", { value: "", text: "채널 말투 참고 안 함" })].concat(META.channels.map(function (c) {
       return h("option", { value: c.key, text: (c.display || c.name) + " 가사 프롬프트도 참고" });
     })));
@@ -1207,8 +1208,9 @@
           LY_DRAFT = {}; toast("가사를 만드는 중이에요 (1분쯤)"); refreshExtra();
         }).catch(function (err) { toast(err.message); });
       } }, ["🎵 수노 가사 만들기"])])]));
-    if (!LYRICS.length) { box.appendChild(h("div", { class: "card-box empty", text: "아직 만든 가사가 없어요" })); return; }
-    LYRICS.forEach(function (j, i) {
+    var lys = LYRICS.filter(function (j) { return view.ch === "all" || !j.channel || j.channel === view.ch; });
+    if (!lys.length) { box.appendChild(h("div", { class: "card-box empty", text: "아직 만든 가사가 없어요" })); return; }
+    lys.forEach(function (j, i) {
       var res = j.result || {}, busy = j.state === "요청" || j.state === "만드는중";
       var st = { "요청": "⏳ 차례 기다림", "만드는중": "🎵 만드는 중…", "완료": "✅ 완료", "실패": "⚠ 실패" }[j.state] || j.state;
       var del = function (ev) { ev.preventDefault(); ev.stopPropagation(); if (confirm("이 가사를 지울까요?")) api("DELETE", "/api/lyrics/" + j.id).then(function () { toast("지웠어요"); refreshExtra(); }); };
@@ -1258,6 +1260,9 @@
     b.appendChild(h("h3", { class: "set-h", text: "🧠 프롬프트" }));
     var pb = b.appendChild(h("div", {}));
     drawPromptsPage(pb);
+    var lw = box.appendChild(h("details", { class: "card-box", "data-k": "chset-lyrics" }, [h("summary", {}, [h("b", { text: "🎵 참고 가사로 가사 프롬프트 만들기" }),
+      h("span", { class: "muted small", text: "  마음에 드는 노래 가사를 넣으면 그 형식대로 가사 프롬프트를 만들어 줘요" })])]));
+    drawLyricsPage(lw.appendChild(h("div", {})));
   }
 
   // 🎬 새 영상 만들기 — 한 편을 1~6단계 순서대로
@@ -1369,20 +1374,20 @@
           kids.push(h("details", { class: "ti-desc mk-song", "data-k": "song" + e.id + "-" + i }, [
             h("summary", { class: "small" }, [(sd[i] ? "✅ " : "") + (i + 1) + ". " + (sg.title || "") + (sg.lyrics ? "" : "  (가사 쓰는 중…)")]),
             sg.idea ? h("div", { class: "muted small", text: sg.idea }) : null,
-            h("div", { class: "row gap" }, [copyBtn(sg.title || ""), h("span", { class: "small", text: "← 제목 복사" }), sg.lyrics ? copyBtn(sg.lyrics) : null, sg.lyrics ? h("span", { class: "small", text: "← 가사 복사" }) : null]),
+            h("div", { class: "row gap" }, [copyBtn(sg.title || "", "📋 제목 복사"), sg.lyrics ? copyBtn(sg.lyrics, "📋 가사 복사") : null]),
             sg.lyrics ? h("pre", { class: "suno-lyrics", text: sg.lyrics }) : null,
-            h("label", { class: "row gap small" }, [chk, "수노로 만들었어요"])
+            h("label", { class: "mk-check" }, [chk, "수노로 만들었어요"])
           ]));
         });
-        kids.push(h("label", { class: "row gap mk-check" }, [h("input", { type: "checkbox", checked: !!done.songs, onchange: function (ev) { save({ done: { songs: ev.target.checked } }); } }), "노래를 다 만들고 파일(mp3)도 받았어요"]));
-        kids.push(h("span", { class: "muted small", text: "참고할 노래 가사가 있으면 왼쪽 위 🎵 수노 가사에서 그 공식으로 만들 수도 있어요." }));
+        kids.push(h("label", { class: "mk-check" }, [h("input", { type: "checkbox", checked: !!done.songs, onchange: function (ev) { save({ done: { songs: ev.target.checked } }); } }), "노래를 다 만들고 파일(mp3)도 받았어요"]));
+        kids.push(h("span", { class: "muted small", text: "참고할 노래 가사가 있으면 ⚙ 채널 설정 맨 아래 「🎵 참고 가사로 가사 프롬프트 만들기」에서 그 형식을 채널 가사 프롬프트로 만들 수 있어요." }));
         return kids;
       },
       video: function () {
         return [
           h("div", { class: "mk-now" }, [h("span", { class: "small", text: "영상은 Claude가 만들어요. 채팅에 이렇게 말해 주세요:" }), h("b", { text: "「" + chInfo(key).name + " " + e.ep + "편 영상 만들어 줘」" })]),
           h("span", { class: "muted small", text: "노래 파일(mp3)이 있는 폴더도 같이 알려 주세요. 만든 영상은 이 편 날짜로 올리기까지 해 둘게요." }),
-          h("label", { class: "row gap mk-check" }, [h("input", { type: "checkbox", checked: !!done.video, onchange: function (ev) { save({ done: { video: ev.target.checked } }); } }), "영상이 다 만들어졌어요"])
+          h("label", { class: "mk-check" }, [h("input", { type: "checkbox", checked: !!done.video, onchange: function (ev) { save({ done: { video: ev.target.checked } }); } }), "영상이 다 만들어졌어요"])
         ];
       },
       upload: function () {

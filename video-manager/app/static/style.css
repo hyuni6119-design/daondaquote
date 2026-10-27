@@ -632,3 +632,26 @@ select.ref-url { cursor: pointer; }
 .mk-check { font-size: 14px; font-weight: 600; cursor: pointer; }
 .mk-check input, .mk-song input { width: 18px; height: 18px; }
 @media (max-width: 640px) { .mk-sel { min-width: 0; width: 100%; } .mk-thumb .yt-thumb { width: 100%; } }
+
+/* 접기 칸(details) 안 간격 · 비율 맞추기 — details 는 flex 간격이 안 먹어서 여백으로 */
+details.card-box { display: block; }
+details.card-box > *:not(summary) { margin-top: 14px; }
+details.card-box > summary { min-height: 28px; }
+.ti-desc > *:not(summary) { margin-top: 8px; }
+.ti-desc > summary { cursor: pointer; padding: 2px 0; }
+.wrap, .page, .card-box, .ti-main, .sample-sec { min-width: 0; }
+.card-box, .sample-title, .mk-now b, .ti-title { overflow-wrap: anywhere; }
+.card-box pre, .ti-desc pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; box-sizing: border-box; }
+.card-box > .row, .mk-step .row { gap: 10px; }
+.mk-step .btn, .card-box > .row .btn { flex: none; }
+.mk-step .sample-thumb { max-width: 520px; }
+.sample-title { line-height: 1.5; }
+/* 곡 목록: 한 줄씩 칸으로 */
+.mk-song { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; background: var(--soft); }
+.mk-song + .mk-song { margin-top: 8px; }
+.mk-song > summary { font-size: 14px; font-weight: 600; }
+.mk-song .suno-lyrics { background: var(--card); }
+.mk-step .sample-sec { background: var(--soft); border-radius: 12px; padding: 10px 14px; }
+.mk-step .sample-sec .sample-title { background: transparent; padding: 0; }
+label.mk-check { display: flex !important; flex-direction: row !important; align-items: center; justify-content: flex-start; gap: 8px; width: fit-content; }
+.mk-song label.mk-check { font-size: 13.5px; }
