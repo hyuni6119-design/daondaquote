@@ -495,6 +495,7 @@ DEFAULT_RULES = {
     "image_prompt": "",      # 영상 배경 그림 프롬프트
     "lyrics_prompt": "",     # 노래 가사 프롬프트
     "ref_note": "",          # 어느 레퍼런스 채널 분석에서 왔는지
+    "ref_id": 0,             # 📚 저장한 레퍼런스 채널 번호 (0 = 없음)
 }
 
 
@@ -572,6 +573,49 @@ def update_lyric_job(jid, data):
 def delete_lyric_job(jid):
     with _ref_lock:
         kv_set("lyrics", [r for r in lyric_jobs() if r["id"] != jid])
+
+
+# ------------------------------------------------------------ 📚 저장한 레퍼런스 채널
+# 채널 분석 결과를 이름 붙여 저장해 두고, 채널마다 골라 쓰거나 바꿈
+REF_PROMPTS = ("summary", "songs_hint", "title_rules", "desc_rules", "examples", "thumb_prompt", "image_prompt", "lyrics_prompt")
+
+
+def saved_refs():
+    return kv_get("saved_refs", []) or []
+
+
+def saved_ref(sid):
+    return next((r for r in saved_refs() if r["id"] == sid), None)
+
+
+def save_ref(src, name):
+    with _ref_lock:
+        lst = saved_refs()
+        sid = max([r["id"] for r in lst] + [0]) + 1
+        item = {"id": sid, "name": name, "channel": src.get("channel") or {}, "url": src.get("url", ""),
+                "result": {k: (src.get("result") or {}).get(k, "") for k in REF_PROMPTS}, "saved_at": now(), "updated_at": now()}
+        kv_set("saved_refs", lst + [item])
+    return item
+
+
+def update_saved_ref(sid, data):
+    with _ref_lock:
+        lst = saved_refs()
+        for r in lst:
+            if r["id"] == sid:
+                if "name" in data:
+                    r["name"] = str(data["name"]).strip()[:80] or r["name"]
+                if isinstance(data.get("result"), dict):
+                    r["result"].update({k: str(v)[:4000] for k, v in data["result"].items() if k in REF_PROMPTS})
+                r["updated_at"] = now()
+                kv_set("saved_refs", lst)
+                return r
+    return None
+
+
+def delete_saved_ref(sid):
+    with _ref_lock:
+        kv_set("saved_refs", [r for r in saved_refs() if r["id"] != sid])
 
 
 def delete_ref(rid):

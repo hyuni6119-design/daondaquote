@@ -655,3 +655,15 @@ details.card-box > summary { min-height: 28px; }
 .mk-step .sample-sec .sample-title { background: transparent; padding: 0; }
 label.mk-check { display: flex !important; flex-direction: row !important; align-items: center; justify-content: flex-start; gap: 8px; width: fit-content; }
 .mk-song label.mk-check { font-size: 13.5px; }
+
+/* 📚 레퍼런스 줄 · ✨ 한 번에 다 만들기 */
+.ref-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--req-bg); border: 1px solid var(--req-line); border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; }
+.card-box > .ref-line { margin-bottom: 0; }
+.ref-line .small { color: var(--mid); font-weight: 700; }
+.ref-pick { width: auto; min-width: 180px; padding: 6px 10px; font-size: 13px; }
+.mk-all { margin-bottom: 14px; border: 2px solid var(--gold-line); }
+.mk-all.busy { border-color: var(--work); }
+.mk-all .row { flex-wrap: nowrap; gap: 16px; }
+.mk-all-btn { font-size: 15px; padding: 12px 20px; flex: none; }
+@media (max-width: 640px) { .mk-all .row { flex-wrap: wrap; } .ref-pick { width: 100%; } }
+.mk-sel { max-width: 360px; }

@@ -261,6 +261,55 @@ def del_lyrics(jid: int, _=Depends(need_user)):
     return {"ok": True}
 
 
+@app.post("/api/refs/{rid}/save")
+async def save_ref(rid: int, request: Request, _=Depends(need_user)):
+    """💾 분석 결과를 📚 레퍼런스 채널로 저장"""
+    r = db.ref(rid)
+    if not r or r.get("state") != "완료":
+        raise HTTPException(404)
+    b = await request.json()
+    name = str(b.get("name") or (r.get("channel") or {}).get("title") or r["url"]).strip()[:80]
+    item = db.save_ref(r, name)
+    db.add_log(f"레퍼런스 채널 ‘{name}’을 저장했습니다")
+    return item
+
+
+@app.get("/api/saved-refs")
+def get_saved_refs(_=Depends(need_user)):
+    return db.saved_refs()
+
+
+@app.patch("/api/saved-refs/{sid}")
+async def patch_saved_ref(sid: int, request: Request, _=Depends(need_user)):
+    r = db.update_saved_ref(sid, await request.json())
+    if not r:
+        raise HTTPException(404)
+    return r
+
+
+@app.delete("/api/saved-refs/{sid}")
+def del_saved_ref(sid: int, _=Depends(need_user)):
+    db.delete_saved_ref(sid)
+    for c in config.CHANNELS:  # 이걸 쓰던 채널은 표시만 지움 (프롬프트는 그대로)
+        if db.rules(c["key"]).get("ref_id") == sid:
+            db.set_rules(c["key"], {"ref_id": 0})
+    return {"ok": True}
+
+
+@app.post("/api/saved-refs/{sid}/apply/{key}")
+def apply_saved_ref(sid: int, key: str, _=Depends(need_user)):
+    """이 채널의 레퍼런스를 바꿈 → 제목·설명·예시·썸네일·영상 그림·가사 프롬프트를 이 레퍼런스 것으로"""
+    r = db.saved_ref(sid)
+    if not r or not any(c["key"] == key for c in config.CHANNELS):
+        raise HTTPException(404)
+    res = r.get("result") or {}
+    data = {k: res.get(k, "") for k in ("title_rules", "desc_rules", "examples", "thumb_prompt", "image_prompt", "lyrics_prompt")}
+    data.update({"ref_id": sid, "ref_note": r["name"]})
+    out = db.set_rules(key, data)
+    db.add_log(f"{_name(key)} 레퍼런스 채널을 ‘{r['name']}’로 바꿨습니다")
+    return out
+
+
 @app.delete("/api/refs/{rid}")
 def del_ref(rid: int, _=Depends(need_user)):
     db.delete_ref(rid)
@@ -296,6 +345,8 @@ async def make_update(eid: int, request: Request, _=Depends(need_user)):
         mk["song_done"] = {**(mk.get("song_done") or {}), **{str(k)[:5]: bool(v) for k, v in b["song_done"].items()}}
     if b.get("job") in ("thumb", "songs"):
         mk.setdefault("jobs", {})[b["job"]] = {"state": "요청", "error": ""}
+    if b.get("job") == "all":  # ✨ 한 번에 다 만들기: 주제 → 썸네일 → 곡 목록 → 제목·설명 → 가사
+        mk.setdefault("jobs", {})["all"] = {"state": "요청", "error": "", "stage": "topic", "keep_topic": bool(mk.get("topic"))}
     return db.update_episode(eid, {"make": mk})
 
 
