@@ -7,7 +7,7 @@ from typing import Optional
 
 import httpx
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -49,16 +49,25 @@ app.include_router(make_router(need_user))  # 사이트에서 직접 올리기 (
 
 # ---------------------------------------------------------------- 화면
 
+def _page(name):
+    """화면 파일을 줄 때 app.js·style.css 주소에 고친 시각을 붙임 — 브라우저가 예전 파일을 기억해 화면이 깨지는 일 방지"""
+    html = (STATIC / name).read_text(encoding="utf-8")
+    for f in ("style.css", "app.js"):
+        v = int((STATIC / f).stat().st_mtime)
+        html = html.replace(f'/static/{f}"', f'/static/{f}?v={v}"')
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/")
 def home(request: Request):
     if not request.session.get("ok"):
         return RedirectResponse("/login")
-    return FileResponse(STATIC / "index.html")
+    return _page("index.html")
 
 
 @app.get("/login")
 def login_page():
-    return FileResponse(STATIC / "login.html")
+    return _page("login.html")
 
 
 _tries = {}
