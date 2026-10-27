@@ -1113,7 +1113,7 @@
       if (rf.state === "완료") {
         REF_KEYS.forEach(function (k) {
           if (!res[k[0]]) return;
-          kids.push(h("details", { class: "ti-desc", open: k[0] === "summary" }, [h("summary", { class: "small", text: k[1] }), h("pre", { text: res[k[0]] })]));
+          kids.push(h("details", { class: "ti-desc", open: k[0] === "summary" }, [h("summary", { class: "small", text: k[1] }), copyBtn(res[k[0]]), h("pre", { text: res[k[0]] })]));
         });
         kids.push(sampleBox(rf));
         kids.push(h("div", { class: "row gap" }, [h("span", { class: "small", text: "이 프롬프트를 채널에 넣기:" })].concat(META.channels.map(function (c) {
@@ -1129,6 +1129,19 @@
       ]));
       box.appendChild(h("div", { class: "card-box", "data-k": "ref" + rf.id }, kids));
     });
+  }
+
+  function copyBtn(text) {
+    return h("button", { type: "button", class: "btn small copy-btn", onclick: function () {
+      var done = function () { toast("복사했어요 — 붙여 넣기(Ctrl+V) 하세요"); };
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+      else { fallbackCopy(text); done(); }
+    } }, ["📋 복사"]);
+  }
+  function fallbackCopy(text) {
+    var t = h("textarea", {}); t.value = text; document.body.appendChild(t); t.select();
+    try { document.execCommand("copy"); } catch (e) {}
+    t.remove();
   }
 
   // 분석한 프롬프트로 예시 한 편(제목·설명·곡 목록·첫 곡 가사·썸네일 글자·그림 프롬프트)을 시험으로 만들어 봄
@@ -1148,10 +1161,10 @@
       if (sm.thumb_text) kids.push(h("div", { class: "sample-sec" }, [h("span", { class: "small", text: "썸네일 글자" }), h("div", { class: "sample-thumb", text: sm.thumb_text })]));
       if (sm.songs && sm.songs.length) kids.push(h("div", { class: "sample-sec" }, [h("span", { class: "small", text: "곡 목록 (" + sm.songs.length + "곡)" }), h("ol", { class: "sample-songs" }, sm.songs.map(function (t) { return h("li", { text: t }); }))]));
       var ly = sm.lyrics || {};
-      if (ly.text) kids.push(h("details", { class: "ti-desc", open: true }, [h("summary", { class: "small", text: "첫 곡 가사 — " + (ly.title || "") }), ly.style ? h("div", { class: "muted small", text: "수노 스타일: " + ly.style }) : null, h("pre", { text: ly.text })]));
+      if (ly.text) kids.push(h("details", { class: "ti-desc", open: true }, [h("summary", { class: "small", text: "첫 곡 가사 — " + (ly.title || "") }), ly.style ? h("div", { class: "muted small", text: "수노 스타일: " + ly.style }) : null, copyBtn(ly.text), h("pre", { text: ly.text })]));
       if (sm.description) kids.push(h("details", { class: "ti-desc" }, [h("summary", { class: "small", text: "설명 전체" }), h("pre", { text: sm.description })]));
-      if (sm.thumb_prompt) kids.push(h("details", { class: "ti-desc" }, [h("summary", { class: "small", text: "이번 편 썸네일 그림 프롬프트" }), h("pre", { text: sm.thumb_prompt })]));
-      if (sm.image_prompt) kids.push(h("details", { class: "ti-desc" }, [h("summary", { class: "small", text: "이번 편 영상 배경 그림 프롬프트" }), h("pre", { text: sm.image_prompt })]));
+      if (sm.thumb_prompt) kids.push(h("details", { class: "ti-desc", open: true }, [h("summary", { class: "small", text: "🖼 이번 편 썸네일 프롬프트 — 그림 AI(ChatGPT·Gemini)에 그대로 붙여 넣으면 그림+글자까지 나와요" }), copyBtn(sm.thumb_prompt), h("pre", { text: sm.thumb_prompt })]));
+      if (sm.image_prompt) kids.push(h("details", { class: "ti-desc" }, [h("summary", { class: "small", text: "이번 편 영상 배경 그림 프롬프트" }), copyBtn(sm.image_prompt), h("pre", { text: sm.image_prompt })]));
     }
     return h("div", { class: "sample-box" }, kids);
   }
