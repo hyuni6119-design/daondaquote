@@ -280,6 +280,25 @@ async def put_system(request: Request, who=Depends(need_user)):
     return db.kv_set("system", await request.json())
 
 
+@app.post("/api/episodes/{eid}/make")
+async def make_update(eid: int, request: Request, _=Depends(need_user)):
+    """🎬 새 영상 만들기: 주제·단계 체크를 고치거나 AI 일(job: thumb=썸네일 프롬프트, songs=곡 목록·가사)을 맡김"""
+    e = db.episode(eid)
+    if not e:
+        raise HTTPException(404)
+    b = await request.json()
+    mk = dict(e.get("make") or {})
+    if "topic" in b:
+        mk["topic"] = str(b.get("topic") or "").strip()[:300]
+    if isinstance(b.get("done"), dict):
+        mk["done"] = {**(mk.get("done") or {}), **{str(k)[:20]: bool(v) for k, v in b["done"].items()}}
+    if isinstance(b.get("song_done"), dict):
+        mk["song_done"] = {**(mk.get("song_done") or {}), **{str(k)[:5]: bool(v) for k, v in b["song_done"].items()}}
+    if b.get("job") in ("thumb", "songs"):
+        mk.setdefault("jobs", {})[b["job"]] = {"state": "요청", "error": ""}
+    return db.update_episode(eid, {"make": mk})
+
+
 @app.post("/api/episodes/{eid}/ai")
 def ai_request(eid: int, _=Depends(need_user)):
     """이 편의 제목 후보 3개 · 설명 첫머리를 AI에게 (서버 일꾼이 1분 안에 씀)"""

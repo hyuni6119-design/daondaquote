@@ -3,7 +3,11 @@
 
   var META = null, EPS = [], QUEUE = [], STATUS = {};
   var SIDE_NAV = document.getElementById("sideNav");
-  var TOOL_PAGES = { refs: 1, lyrics: 1 }; // 채널과 따로 있는 도구 메뉴
+  var TOOL_PAGES = { refs: 1, lyrics: 1, log: 1, settings: 1 }; // 채널과 따로 있는 메뉴
+  var TOOL_SUB = { refs: "레퍼런스 채널을 분석해서 프롬프트를 만들어요 (채널과 따로)", lyrics: "참고 가사로 수노에 넣을 새 가사를 만들어요 (채널과 따로)",
+    log: "사이트·서버·PC가 한 일", settings: "서버 일꾼 · 저장 공간 · 채널 연결" };
+  var OLD_PAGE = { upload: "make", titles: "make", rules: "chset", prompts: "chset", thumbs: "list", shop: "list" }; // 예전 메뉴 → 새 메뉴
+  var UP_PRESET = null; // 🎬 새 영상 만들기에서 올리기 창을 열 때 채널·날짜 미리 채움
   var view = { ch: "all", st: "all", mode: "list", month: null, open: null, tab: "details", sortAsc: false };
   try { var saved = JSON.parse(localStorage.getItem("vm-view") || "{}");
     ["ch", "st", "mode", "page"].forEach(function (k) { if (saved[k]) view[k] = saved[k]; });
@@ -788,6 +792,7 @@
     var chSel = h("select", {}, META.channels.map(function (c) { return h("option", { value: c.key, text: c.name }); }));
     var dateIn = h("input", { type: "date", value: (u && u.date) || "" });
     if (u) { chSel.value = u.channel; chSel.disabled = true; }
+    else if (UP_PRESET) { chSel.value = UP_PRESET.channel; dateIn.value = UP_PRESET.date || ""; }
     var fileIn = h("input", { type: "file", accept: "video/mp4,video/*" });
     var drop = h("label", { class: "up-drop" }, [fileIn, h("b", { text: u ? (u.received >= u.size ? "✅ " + u.filename + " (" + gb(u.size) + ") 서버에 다 받음" : "🎬 " + u.filename + " — 같은 파일을 다시 골라 이어 올리기") : "🎬 영상 파일을 끌어다 놓거나 눌러서 고르기" }),
       h("span", { class: "muted small", text: "mp4 · 8GB까지 · 올리는 동안 이 창은 닫아도 되지만 사이트 탭은 열어 두세요" })]);
@@ -891,18 +896,19 @@
   });
   $("menuToggle").addEventListener("click", function () { $("sidebar").classList.toggle("open"); });
   $("btnStats").addEventListener("click", function (ev) { ev.preventDefault(); });
-  $("upDlg").addEventListener("close", function () { upOpen = null; });
+  $("upDlg").addEventListener("close", function () { upOpen = null; UP_PRESET = null; });
+  $("shopWrap").addEventListener("toggle", function () { if ($("shopWrap").open) drawShopPage($("shopBox")); });
   // 창 전체 어디에 끌어다 놓아도 브라우저가 파일을 열지 않게
   ["dragover", "drop"].forEach(function (ev) { $("upDlg").addEventListener(ev, function (e) { if (e.target.type !== "file") e.preventDefault(); }); });
 
   // ------------------------------------------------------------ 왼쪽 메뉴 화면들 (라이브 관리자처럼)
   var RULES = {}, SYS = {}, LOGS = [];
-  var PAGE_NAME = { list: "영상 목록", upload: "영상 올리기", rules: "만들기 규칙", titles: "제목·설명", prompts: "프롬프트", refs: "채널 분석", lyrics: "수노 가사", thumbs: "썸네일", shop: "쇼핑 태그", log: "실행 기록", settings: "설정·상태" };
+  var PAGE_NAME = { list: "영상 목록", upload: "영상 올리기", rules: "만들기 규칙", titles: "제목·설명", prompts: "프롬프트", refs: "채널 분석", lyrics: "수노 가사", make: "새 영상 만들기", chset: "채널 설정", thumbs: "썸네일", shop: "쇼핑 태그", log: "실행 기록", settings: "설정·상태" };
   view.page = view.page || "list";
   function setPage(p) {
     view.page = p; saveView();
     Array.prototype.forEach.call(SIDE_NAV.querySelectorAll(".nav-item"), function (b) { b.classList.toggle("active", b.dataset.page === p); });
-    Array.prototype.forEach.call($("toolNav").querySelectorAll(".nav-item"), function (b) { b.classList.toggle("active", b.dataset.page === p); });
+    Array.prototype.forEach.call(document.querySelectorAll("#toolNav .nav-item, #bottomNav .nav-item"), function (b) { b.classList.toggle("active", b.dataset.page === p); });
     if (META) drawTabs();
     Array.prototype.forEach.call(document.querySelectorAll(".page"), function (el) { el.hidden = el.id !== "page-" + p; });
     $("sidebar").classList.remove("open");
@@ -910,7 +916,7 @@
     window.scrollTo(0, 0);
   }
   SIDE_NAV.addEventListener("click", function (ev) { var b = ev.target.closest(".nav-item"); if (b) setPage(b.dataset.page); });
-  $("toolNav").addEventListener("click", function (ev) { var b = ev.target.closest(".nav-item"); if (b) setPage(b.dataset.page); });
+  ["toolNav", "bottomNav"].forEach(function (id) { $(id).addEventListener("click", function (ev) { var b = ev.target.closest(".nav-item"); if (b) setPage(b.dataset.page); }); });
   function chList() { return META.channels.filter(function (c) { return view.ch === "all" || c.key === view.ch; }); }
   function chEps() { return EPS.filter(function (e) { return view.ch === "all" || e.channel === view.ch; }); }
   function head(title, sub, right) {
@@ -923,12 +929,17 @@
     var cur = META.channels.filter(function (c) { return c.key === view.ch; })[0];
     var chName = cur ? (cur.display || cur.name) : "전체 채널";
     $("pageTitle").textContent = view.page === "list" ? chName : PAGE_NAME[view.page];
-    if (view.page !== "list") $("pageSub").textContent = TOOL_PAGES[view.page] ? (view.page === "refs" ? "레퍼런스 채널을 분석해서 프롬프트를 만들어요 (채널과 따로)" : "참고 가사로 수노에 넣을 새 가사를 만들어요 (채널과 따로)") : chName + (view.ch === "all" ? "" : " 채널");
+    if (view.page !== "list") $("pageSub").textContent = TOOL_PAGES[view.page] ? TOOL_SUB[view.page] : chName + (view.ch === "all" ? "" : " 채널");
     var pbox = $("page-" + view.page), opened = {};
     var dkey = function (dt) { if (dt.dataset.k) return dt.dataset.k; var c = dt.closest("[data-k]"); var s = dt.querySelector("summary"); return (c ? c.dataset.k : "") + "|" + (s ? s.textContent : ""); };
     if (pbox) Array.prototype.forEach.call(pbox.querySelectorAll("details"), function (dt) { opened[dkey(dt)] = dt.open; });
-    var fn = { upload: drawUploadPage, rules: drawRulesPage, titles: drawTitlesPage, prompts: drawPromptsPage, refs: drawRefsPage, lyrics: drawLyricsPage, thumbs: drawThumbsPage, shop: drawShopPage, log: drawLogPage, settings: drawSettingsPage }[view.page];
+    var fn = { upload: drawUploadPage, rules: drawRulesPage, titles: drawTitlesPage, prompts: drawPromptsPage, refs: drawRefsPage, lyrics: drawLyricsPage, make: drawMakePage, chset: drawChsetPage, thumbs: drawThumbsPage, shop: drawShopPage, log: drawLogPage, settings: drawSettingsPage }[view.page];
     if (fn) fn(pbox);
+    if (view.page === "list") { // 목록 화면 아래 🛍 쇼핑 태그 확인
+      var vods = chEps().filter(function (x) { return x.video_id; });
+      $("shopCount").textContent = vods.filter(function (x) { return (x.shop_tags || 0) >= 4; }).length + " / " + vods.length + "편 확인됨";
+      if ($("shopWrap").open) drawShopPage($("shopBox"));
+    }
     if (pbox) Array.prototype.forEach.call(pbox.querySelectorAll("details"), function (dt) { var k = dkey(dt); if (k in opened) dt.open = opened[k]; });
   }
 
@@ -1238,6 +1249,160 @@
       h(big ? "pre" : "div", { class: big ? "suno-lyrics" : "sample-title", text: text || "" })]);
   }
 
+  // ⚙ 채널 설정 — 만들기 규칙 + 프롬프트를 한 화면에
+  function drawChsetPage(box) {
+    if (box.contains(document.activeElement) && /TEXTAREA|INPUT|SELECT/.test(document.activeElement.tagName)) return;
+    box.innerHTML = "";
+    var a = box.appendChild(h("div", {})), b = box.appendChild(h("div", {}));
+    drawRulesPage(a);
+    b.appendChild(h("h3", { class: "set-h", text: "🧠 프롬프트" }));
+    var pb = b.appendChild(h("div", {}));
+    drawPromptsPage(pb);
+  }
+
+  // 🎬 새 영상 만들기 — 한 편을 1~6단계 순서대로
+  var MK_TOPIC = {};
+  function addDays(d, n) { var x = new Date(d + "T00:00:00"); x.setDate(x.getDate() + n); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0"); }
+  function drawMakePage(box) {
+    if (box.contains(document.activeElement) && /TEXTAREA|INPUT|SELECT/.test(document.activeElement.tagName)) return;
+    box.innerHTML = "";
+    if (view.ch === "all") {
+      box.appendChild(head("새 영상 만들기", "어느 채널 영상을 만들까요?"));
+      box.appendChild(h("div", { class: "mk-pick" }, META.channels.map(function (c) {
+        return h("button", { type: "button", class: "card-box mk-ch", onclick: function () { view.ch = c.key; saveView(); drawAll(); } }, [chTag2(c.key), h("b", { text: (c.display || c.name) + " 영상 만들기 →" })]);
+      })));
+      return;
+    }
+    var key = view.ch, rl = RULES[key] || {};
+    var mine = EPS.filter(function (e) { return e.channel === key; });
+    var todo = mine.filter(function (e) { return !e.video_id; }).sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+    var e = todo.filter(function (x) { return x.id === view.makeEp; })[0] || todo[0];
+    var newEp = function () {
+      var last = mine.map(function (x) { return x.date; }).filter(Boolean).sort().pop();
+      var date = last ? addDays(last, +rl.every_days || 2) : META.today;
+      if (date < META.today) date = META.today;
+      api("POST", "/api/episodes", { channel: key, date: date }).then(function (ne) { view.makeEp = ne.id; toast(ne.ep + "편을 시작했어요 (" + dotDate(date) + " 공개 예정)"); refresh(); }).catch(function (err) { toast(err.message); });
+    };
+    var pick = h("select", { class: "ref-url mk-sel", onchange: function () { view.makeEp = +pick.value; drawPage(); } }, todo.map(function (x) {
+      return h("option", { value: String(x.id), text: x.ep + "편 · " + dotDate(x.date) + " 공개 예정" + (x.make && x.make.topic ? " · " + x.make.topic : "") });
+    }));
+    if (e) pick.value = String(e.id);
+    box.appendChild(head("새 영상 만들기", "한 편을 위에서부터 순서대로 하면 돼요. 👉 표시가 지금 할 차례예요.",
+      h("div", { class: "row gap" }, [todo.length ? pick : null, h("button", { type: "button", class: "btn primary", onclick: newEp }, ["＋ 새 편 시작"])])));
+    if (!e) { box.appendChild(h("div", { class: "card-box empty", text: "만들고 있는 편이 없어요. 「＋ 새 편 시작」을 눌러 주세요." })); return; }
+    view.makeEp = e.id;
+    var mk = e.make || {}, done = mk.done || {}, jobs = mk.jobs || {};
+    var save = function (body, msg) { return api("POST", "/api/episodes/" + e.id + "/make", body).then(function () { if (msg) toast(msg); refresh(); }).catch(function (err) { toast(err.message); }); };
+    var busy = function (k) { return jobs[k] && (jobs[k].state === "요청" || jobs[k].state === "만드는중"); };
+    var jobErr = function (k) { return jobs[k] && jobs[k].state === "실패" ? h("span", { class: "small set-bad", text: "AI 실패: " + jobs[k].error }) : null; };
+    var songs = mk.songs || [], sd = mk.song_done || {};
+    var steps = [
+      { k: "topic", t: "주제 정하기", ok: !!mk.topic },
+      { k: "thumb", t: "썸네일", ok: !!thumbSrc(e) },
+      { k: "title", t: "제목·설명", ok: !!e.title && !!e.description },
+      { k: "songs", t: "가사·노래 (수노)", ok: !!done.songs },
+      { k: "video", t: "영상 만들기", ok: !!done.video || !!e.video_id },
+      { k: "upload", t: "올리기 · 검토 · 승인", ok: !!e.video_id && (e.review === "승인" || e.badge === "예약됨" || e.badge === "공개됨") }
+    ];
+    var cur = steps.filter(function (s) { return !s.ok; })[0];
+    box.appendChild(h("div", { class: "mk-bar" }, steps.map(function (s, i) {
+      return h("span", { class: "mk-dot" + (s.ok ? " ok" : s === cur ? " now" : "") }, [(s.ok ? "✓" : String(i + 1)) + " " + s.t]);
+    })));
+    box.appendChild(h("div", { class: "muted small mk-ep", text: chInfo(key).name + " " + e.ep + "편 · " + dotDate(e.date) + " 공개 예정" }));
+    var body = {
+      topic: function () {
+        var inp = h("input", { type: "text", class: "ref-url", placeholder: "예) 멀리 사는 자식을 위한 어머니의 기도", oninput: function () { MK_TOPIC[e.id] = inp.value; } });
+        inp.value = MK_TOPIC[e.id] != null ? MK_TOPIC[e.id] : (mk.topic || "");
+        return [h("span", { class: "muted small", text: "이번 편에 담을 이야기 한 줄이에요. 썸네일·제목·가사가 모두 이 주제에 맞춰 나와요." }),
+          h("div", { class: "row gap sample-go" }, [inp, h("button", { type: "button", class: "btn primary", onclick: function () { delete MK_TOPIC[e.id]; save({ topic: inp.value }, "주제를 저장했어요"); } }, ["저장"])])];
+      },
+      thumb: function () {
+        var file = h("input", { type: "file", accept: "image/*", onchange: function () {
+          if (!file.files[0]) return;
+          var fd = new FormData(); fd.append("file", file.files[0]);
+          api("POST", "/api/episodes/" + e.id + "/thumbnail", fd).then(function () { toast("썸네일을 넣었어요"); refresh(); }).catch(function (err) { toast(err.message); });
+        } });
+        return [
+          h("span", { class: "muted small", text: "① 「프롬프트 만들기」 → ② 📋 복사해서 ChatGPT·Gemini에 붙여 넣기 → ③ 나온 그림을 여기에 넣기" }),
+          h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", disabled: busy("thumb"), onclick: function () { save({ job: "thumb" }, "썸네일 프롬프트를 만드는 중이에요 (1분쯤)"); } },
+            [busy("thumb") ? "만드는 중…" : mk.thumb_prompt ? "🔁 다시 만들기" : "✨ 썸네일 프롬프트 만들기"]), rl.thumb_prompt ? null : h("span", { class: "muted small", text: "채널 설정에 썸네일 프롬프트가 없어서 기본 분위기로 만들어요" })]),
+          jobErr("thumb"),
+          mk.thumb_text ? h("div", { class: "sample-thumb", text: mk.thumb_text }) : null,
+          mk.thumb_prompt ? h("details", { class: "ti-desc", open: true }, [h("summary", { class: "small", text: "썸네일 프롬프트 (그림 AI에 그대로 붙여 넣기)" }), copyBtn(mk.thumb_prompt), h("pre", { text: mk.thumb_prompt })]) : null,
+          h("div", { class: "mk-thumb" }, [h("div", { class: "yt-thumb" }, [thumbSrc(e) ? h("img", { src: thumbSrc(e), alt: "" }) : h("span", { class: "muted small", text: "아직 썸네일 없음" })]),
+            h("label", { class: "btn" }, ["🖼 썸네일 그림 넣기", file])])
+        ];
+      },
+      title: function () {
+        var apply = function (field, val, label) {
+          if (!confirm(label + "을 이걸로 할까요?\n\n" + String(val).slice(0, 300))) return;
+          var b = {}; b[field] = val;
+          (e.video_id ? api("POST", "/api/episodes/" + e.id + "/edit", b) : api("PATCH", "/api/episodes/" + e.id, b)).then(function () { toast(label + "을 넣었어요"); refresh(); }).catch(function (err) { toast(err.message); });
+        };
+        return [
+          h("span", { class: "muted small", text: "주제·썸네일 문구·곡 제목에 맞춰 AI가 제목 후보 3개와 설명을 써요. 누르면 바로 들어가요." }),
+          h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", disabled: e.ai_state === "요청", onclick: function () {
+            api("POST", "/api/episodes/" + e.id + "/ai").then(function () { toast("AI가 쓰는 중이에요 (1분쯤)"); refresh(); }).catch(function (err) { toast(err.message); });
+          } }, [e.ai_state === "요청" ? "쓰는 중…" : "✨ 제목·설명 만들기"])]),
+          e.ai_state === "실패" ? h("span", { class: "small set-bad", text: "AI 실패: " + e.ai_note }) : null,
+          (e.ai_titles || []).length ? h("div", { class: "up-alts" }, [h("span", { class: "muted small", text: "제목 후보 (누르면 넣기)" })].concat(e.ai_titles.map(function (t) {
+            return h("button", { type: "button", class: "chip", onclick: function () { apply("title", t, "제목"); } }, [t]);
+          }))) : null,
+          e.ai_desc ? h("details", { class: "ti-desc" }, [h("summary", { class: "small", text: "AI 설명 보기" }), h("pre", { text: e.ai_desc }),
+            h("button", { type: "button", class: "btn small", onclick: function () { apply("description", e.ai_desc, "설명"); } }, ["이 설명 넣기"])]) : null,
+          h("div", { class: "mk-now" }, [h("span", { class: "small", text: "지금 제목" }), h("b", { text: e.title || "아직 없음" })]),
+          e.description ? h("details", { class: "ti-desc" }, [h("summary", { class: "small", text: "지금 설명 보기" }), h("pre", { text: e.description })]) : null
+        ];
+      },
+      songs: function () {
+        var kids = [
+          h("span", { class: "muted small", text: "AI가 곡 " + (+rl.songs || 8) + "개의 제목과 가사를 써요 (몇 분 걸려요). 곡마다 📋 복사해서 수노에 붙여 넣고, 만든 곡은 체크하세요." }),
+          h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", disabled: busy("songs"), onclick: function () {
+            if (songs.length && !confirm("곡 목록과 가사를 새로 만들까요? (지금 것은 바뀌어요)")) return;
+            save({ job: "songs" }, "곡 목록과 가사를 만드는 중이에요 (몇 분)");
+          } }, [busy("songs") ? "만드는 중… (" + songs.filter(function (x) { return x.lyrics; }).length + "/" + (songs.length || "?") + ")" : songs.length ? "🔁 다시 만들기" : "✨ 곡 목록·가사 만들기"])]),
+          jobErr("songs")
+        ];
+        if (songs.length && songs[0].style) kids.push(sunoField("Style of Music (모든 곡 공통)", songs[0].style, false));
+        songs.forEach(function (sg, i) {
+          var chk = h("input", { type: "checkbox", onchange: function () { var x = {}; x[i] = chk.checked; save({ song_done: x }); } }); chk.checked = !!sd[i];
+          kids.push(h("details", { class: "ti-desc mk-song", "data-k": "song" + e.id + "-" + i }, [
+            h("summary", { class: "small" }, [(sd[i] ? "✅ " : "") + (i + 1) + ". " + (sg.title || "") + (sg.lyrics ? "" : "  (가사 쓰는 중…)")]),
+            sg.idea ? h("div", { class: "muted small", text: sg.idea }) : null,
+            h("div", { class: "row gap" }, [copyBtn(sg.title || ""), h("span", { class: "small", text: "← 제목 복사" }), sg.lyrics ? copyBtn(sg.lyrics) : null, sg.lyrics ? h("span", { class: "small", text: "← 가사 복사" }) : null]),
+            sg.lyrics ? h("pre", { class: "suno-lyrics", text: sg.lyrics }) : null,
+            h("label", { class: "row gap small" }, [chk, "수노로 만들었어요"])
+          ]));
+        });
+        kids.push(h("label", { class: "row gap mk-check" }, [h("input", { type: "checkbox", checked: !!done.songs, onchange: function (ev) { save({ done: { songs: ev.target.checked } }); } }), "노래를 다 만들고 파일(mp3)도 받았어요"]));
+        kids.push(h("span", { class: "muted small", text: "참고할 노래 가사가 있으면 왼쪽 위 🎵 수노 가사에서 그 공식으로 만들 수도 있어요." }));
+        return kids;
+      },
+      video: function () {
+        return [
+          h("div", { class: "mk-now" }, [h("span", { class: "small", text: "영상은 Claude가 만들어요. 채팅에 이렇게 말해 주세요:" }), h("b", { text: "「" + chInfo(key).name + " " + e.ep + "편 영상 만들어 줘」" })]),
+          h("span", { class: "muted small", text: "노래 파일(mp3)이 있는 폴더도 같이 알려 주세요. 만든 영상은 이 편 날짜로 올리기까지 해 둘게요." }),
+          h("label", { class: "row gap mk-check" }, [h("input", { type: "checkbox", checked: !!done.video, onchange: function (ev) { save({ done: { video: ev.target.checked } }); } }), "영상이 다 만들어졌어요"])
+        ];
+      },
+      upload: function () {
+        var st = !e.video_id ? "아직 유튜브에 안 올라갔어요" : e.review === "검토대기" ? "유튜브에 일부 공개로 올라갔어요 — 📋 영상 목록 맨 위 🕵 검토할 영상에서 보고 승인하세요" : e.badge === "예약됨" ? "승인됨 · " + dotDate(e.date) + " " + (rl.publish_time || "21:00") + " 공개 예약" : e.badge;
+        return [
+          h("div", { class: "mk-now" }, [h("span", { class: "small", text: "지금 상태" }), h("b", { text: st })]),
+          !e.video_id ? h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", onclick: function () { UP_PRESET = { channel: key, date: e.date }; openUpload(null); } }, ["⬆ 영상 파일 올리기"]),
+            h("span", { class: "muted small", text: "Claude가 올리면 이 단계는 저절로 넘어가요" })]) : null,
+          e.video_id && e.review === "검토대기" ? h("button", { type: "button", class: "btn primary", onclick: function () { setPage("list"); } }, ["🕵 검토하러 가기"]) : null
+        ];
+      }
+    };
+    steps.forEach(function (s, i) {
+      box.appendChild(h("details", { class: "card-box mk-step" + (s.ok ? " ok" : s === cur ? " now" : ""), "data-k": "mk" + e.id + "-" + s.k, open: s === cur }, [
+        h("summary", { class: "row gap ref-sum" }, [h("span", { class: "mk-num", text: s.ok ? "✓" : String(i + 1) }), h("b", { text: s.t }), h("span", { class: "spacer" }),
+          h("span", { class: "shop-st " + (s.ok ? "ok" : "wait"), text: s.ok ? "✅ 됨" : s === cur ? "👉 지금 할 차례" : "기다림" })])
+      ].concat(body[s.k]())));
+    });
+  }
+
   // 🖼 썸네일 — 16:9 그대로 모아 보기
   function drawThumbsPage(box) {
     box.innerHTML = "";
@@ -1338,6 +1503,7 @@
   api("GET", "/api/meta").then(function (m) {
     META = m;
     $("btnStats").hidden = !m.youtube_stats;
+    if (OLD_PAGE[view.page]) view.page = OLD_PAGE[view.page];
     if (!PAGE_NAME[view.page]) view.page = "list";
     setPage(view.page);
     refresh();

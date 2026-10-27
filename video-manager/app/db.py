@@ -12,7 +12,7 @@ KST = timezone(timedelta(hours=9))
 _lock = threading.Lock()
 _conn = None
 
-JSON_FIELDS = ("steps", "step_notes", "thumb_lines", "tags", "ai_titles")
+JSON_FIELDS = ("steps", "step_notes", "thumb_lines", "tags", "ai_titles", "make")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS episodes (
@@ -87,7 +87,8 @@ def conn():
         load_channels(_conn)
         for col in ("review TEXT DEFAULT ''", "publish_at TEXT DEFAULT ''",  # 예전 DB에도 붙여 줌
                     "shop_tags INTEGER DEFAULT 0", "shop_checked_at TEXT DEFAULT ''",   # 쇼핑 태그 개수 · 마지막 확인
-                    "ai_state TEXT DEFAULT ''", "ai_titles TEXT DEFAULT '[]'", "ai_desc TEXT DEFAULT ''", "ai_note TEXT DEFAULT ''"):  # AI 제목·설명
+                    "ai_state TEXT DEFAULT ''", "ai_titles TEXT DEFAULT '[]'", "ai_desc TEXT DEFAULT ''", "ai_note TEXT DEFAULT ''",  # AI 제목·설명
+                    "make TEXT DEFAULT '{}'"):  # 🎬 새 영상 만들기 (주제 · 단계 체크 · 썸네일 프롬프트 · 곡/가사)
             try:
                 _conn.execute("ALTER TABLE episodes ADD COLUMN " + col)
             except sqlite3.OperationalError:
@@ -203,7 +204,7 @@ def create_episode(channel, ep, **fields):
 EDITABLE = {"date", "minutes", "songs_done", "songs_total", "steps", "step_notes", "title",
             "description", "thumb_lines", "tags", "thumb", "block", "note", "video_id",
             "privacy", "views", "likes", "stats_at", "review", "publish_at",
-            "shop_tags", "shop_checked_at", "ai_state", "ai_titles", "ai_desc", "ai_note"}
+            "shop_tags", "shop_checked_at", "ai_state", "ai_titles", "ai_desc", "ai_note", "make"}
 
 
 def update_episode(eid, fields):
