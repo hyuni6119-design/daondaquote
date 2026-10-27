@@ -313,11 +313,9 @@
       var tag = e.ep + "편 (" + dotDate(e.date) + ")";
       if (all.state === "요청" || all.state === "만드는중") { out.push({ ic: "⏳", t: tag + " AI가 만드는 중이에요", sub: "기다리면 돼요 — 다 되면 여기에 다음 할 일이 떠요", info: true }); return; }
       if (!e.title && !songs.length) { out.push({ ic: "✨", t: tag + " 「한 번에 다 만들기」 누르기", sub: "주제부터 가사까지 AI가 만들어요", btn: "만들러 가기", fn: go("make", e.id) }); return; }
-      if (mk.thumb_prompt && !thumbSrc(e)) out.push({ ic: "🖼", t: tag + " 썸네일 그림 뽑아서 넣기", sub: "프롬프트 복사 → ChatGPT에 붙여 넣기 → 나온 그림 넣기", btn: "하러 가기", fn: go("make", e.id) });
-      if (songs.length && !done.songs) {
-        var sd = mk.song_done || {}, n = songs.filter(function (x, i) { return sd[i]; }).length;
-        out.push({ ic: "🎵", t: tag + " 수노로 노래 만들기 (" + n + "/" + songs.length + "곡)", sub: "곡마다 가사 복사 → 수노에 붙여 넣기 → mp3 받기", btn: "하러 가기", fn: go("make", e.id) });
-      } else if (done.songs && !done.video) out.push({ ic: "💬", t: tag + " 영상 만들어 달라고 Claude에게 말하기", sub: "채팅에 「" + nm + " " + e.ep + "편 영상 만들어 줘」 + mp3 폴더", btn: "자세히", fn: go("make", e.id) });
+      var pc = mk.pc || {};
+      if (pc.state === "실패") out.push({ ic: "⚠", t: tag + " PC 밤 작업이 막혔어요", sub: pc.note || "", btn: "보기", fn: go("make", e.id) });
+      else if (songs.length && songs.every(function (x) { return x.lyrics; })) out.push({ ic: "🌙", t: tag + (pc.state ? " PC 작업: " + pc.state : " 오늘 밤 10시에 PC가 그림·노래·영상을 만들어요"), sub: pc.note || "PC만 켜 두시면 돼요 — 다 되면 여기에 「검토」가 떠요", info: true });
     });
     if (!making.length) {
       var last = mine.map(function (e) { return e.date; }).filter(Boolean).sort().pop();
@@ -1335,6 +1333,13 @@
 
   // 🎬 새 영상 만들기 — 한 편을 1~6단계 순서대로
   var MK_TOPIC = {}, MK_IMG = {};
+  var PC_SONGS = { "노래받음": 1, "영상완성": 1, "올리는중": 1, "올림": 1 }, PC_VIDEO = { "영상완성": 1, "올리는중": 1, "올림": 1 };
+  function pcLine(mk) {
+    var pc = mk.pc || {};
+    return h("div", { class: "mk-now" }, [h("span", { class: "small", text: "🌙 PC 밤 작업 (매일 밤 10시)" }),
+      h("b", { text: pc.state ? pc.state + (pc.note ? " — " + pc.note : "") : "아직 시작 전 — 가사가 다 되면 오늘 밤에 해요" }),
+      pc.at ? h("span", { class: "muted small", text: String(pc.at).slice(5, 16).replace("T", " ") + " 소식" }) : null]);
+  }
   function addDays(d, n) { var x = new Date(d + "T00:00:00"); x.setDate(x.getDate() + n); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0"); }
   function drawMakePage(box) {
     if (box.contains(document.activeElement) && /TEXTAREA|INPUT|SELECT/.test(document.activeElement.tagName)) return;
@@ -1377,8 +1382,8 @@
       { k: "topic", t: "주제 정하기", ok: !!mk.topic },
       { k: "thumb", t: "썸네일", ok: !!thumbSrc(e) },
       { k: "title", t: "제목·설명", ok: !!e.title && !!e.description },
-      { k: "songs", t: "가사·노래 (수노)", ok: !!done.songs },
-      { k: "video", t: "영상 만들기", ok: !!done.video || !!e.video_id },
+      { k: "songs", t: "가사·노래 (수노)", ok: !!done.songs || PC_SONGS[(mk.pc || {}).state] || !!e.video_id },
+      { k: "video", t: "영상 만들기", ok: !!done.video || PC_VIDEO[(mk.pc || {}).state] || !!e.video_id },
       { k: "upload", t: "올리기 · 검토 · 승인", ok: !!e.video_id && (e.review === "승인" || e.badge === "예약됨" || e.badge === "공개됨") }
     ];
     var cur = steps.filter(function (s) { return !s.ok; })[0];
@@ -1415,7 +1420,7 @@
           api("POST", "/api/episodes/" + e.id + "/thumbnail", fd).then(function () { toast("썸네일을 넣었어요"); refresh(); }).catch(function (err) { toast(err.message); });
         } });
         return [
-          h("span", { class: "muted small", text: "「🖼 그림 만들기」를 누르면 AI가 그림+글씨까지 만들어 바로 넣어요. 직접 뽑고 싶으면 프롬프트를 복사해서 ChatGPT에 붙여 넣고 「📁 내 그림 넣기」." }),
+          h("span", { class: "muted small", text: "그냥 두면 🌙 PC가 밤에 제미나이 웹(구독 · 추가 요금 없음)으로 그려 넣어요. 지금 바로 원하면 「🖼 그림 만들기」(유료 API) 또는 「📁 내 그림 넣기」." }),
           h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", disabled: busy("thumb"), onclick: function () { save({ job: "thumb" }, "썸네일 프롬프트를 만드는 중이에요 (1분쯤)"); } },
             [busy("thumb") ? "만드는 중…" : mk.thumb_prompt ? "🔁 다시 만들기" : "✨ 썸네일 프롬프트 만들기"]), rl.thumb_prompt ? null : h("span", { class: "muted small", text: "채널 설정에 썸네일 프롬프트가 없어서 기본 분위기로 만들어요" })]),
           jobErr("thumb"),
@@ -1488,15 +1493,15 @@
             h("label", { class: "mk-check" }, [chk, "수노로 만들었어요"])
           ]));
         });
-        kids.push(h("label", { class: "mk-check" }, [h("input", { type: "checkbox", checked: !!done.songs, onchange: function (ev) { save({ done: { songs: ev.target.checked } }); } }), "노래를 다 만들고 파일(mp3)도 받았어요"]));
+        kids.push(pcLine(mk));
+        kids.push(h("span", { class: "muted small", text: "노래는 PC가 밤에 수노 사이트에서 이 가사로 만들어 받아요. 직접 만들고 싶으면 가사를 복사해서 쓰세요." }));
         kids.push(h("span", { class: "muted small", text: "참고할 노래 가사가 있으면 ⚙ 채널 설정 맨 아래 「🎵 참고 가사로 가사 프롬프트 만들기」에서 그 형식을 채널 가사 프롬프트로 만들 수 있어요." }));
         return kids;
       },
       video: function () {
         return [
-          h("div", { class: "mk-now" }, [h("span", { class: "small", text: "영상은 Claude가 만들어요. 채팅에 이렇게 말해 주세요:" }), h("b", { text: "「" + chInfo(key).name + " " + e.ep + "편 영상 만들어 줘」" })]),
-          h("span", { class: "muted small", text: "노래 파일(mp3)이 있는 폴더도 같이 알려 주세요. 만든 영상은 이 편 날짜로 올리기까지 해 둘게요." }),
-          h("label", { class: "mk-check" }, [h("input", { type: "checkbox", checked: !!done.video, onchange: function (ev) { save({ done: { video: ev.target.checked } }); } }), "영상이 다 만들어졌어요"])
+          pcLine(mk),
+          h("span", { class: "muted small", text: "PC가 밤에 노래 8곡으로 영상(3바퀴)을 만들어 사이트로 올려요. 그러면 서버가 유튜브에 일부 공개로 올리고 「검토」가 떠요." })
         ];
       },
       upload: function () {

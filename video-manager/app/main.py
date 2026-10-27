@@ -351,6 +351,8 @@ async def make_update(eid: int, request: Request, _=Depends(need_user)):
         mk["song_done"] = {**(mk.get("song_done") or {}), **{str(k)[:5]: bool(v) for k, v in b["song_done"].items()}}
     if b.get("job") in ("thumb", "songs"):
         mk.setdefault("jobs", {})[b["job"]] = {"state": "요청", "error": ""}
+    if isinstance(b.get("pc"), dict):  # 🌙 PC 밤 작업 진행 상황 (밤작업.py 가 적음)
+        mk["pc"] = {"state": str(b["pc"].get("state") or "")[:20], "note": str(b["pc"].get("note") or "")[:300], "at": db.now()}
     if b.get("job") == "image":  # 🖼 썸네일 그림 AI (고른 모델 · 유료)
         mk.setdefault("jobs", {})["image"] = {"state": "요청", "error": "", "model": str(b.get("model") or "gpt-image-1-mini")[:40],
                                             "quality": b.get("quality") if b.get("quality") in ("low", "medium", "high") else "medium"}
