@@ -399,7 +399,7 @@
     // 황금주파수는 웨일의 두 번째 구글 계정(authuser=1) — 안 붙이면 ‘권한이 없습니다’가 뜸
     var studio = e.video_id ? "https://studio.youtube.com/video/" + e.video_id + "/edit" + (e.channel === "A" ? "?authuser=1" : "") : null;
     var player = e.video_id && (e.privacy === "public" || e.privacy === "unlisted")
-      ? h("iframe", { class: "st-player", src: "https://www.youtube.com/embed/" + e.video_id, title: "동영상 미리보기", allow: "encrypted-media; picture-in-picture", allowfullscreen: true })
+      ? h("iframe", { class: "st-player", src: "https://www.youtube.com/embed/" + e.video_id, title: "동영상 미리보기", referrerpolicy: "strict-origin-when-cross-origin", allow: "encrypted-media; picture-in-picture", allowfullscreen: true })
       : h(studio ? "a" : "div", { class: "st-player st-player-img", href: studio, target: studio ? "_blank" : null, rel: studio ? "noopener" : null,
           title: studio ? "유튜브 스튜디오에서 미리보기 (채널 주인으로 로그인된 브라우저에서 열려요)" : null },
           [src ? h("img", { src: src, alt: "" }) : h("div", { class: "yt-nothumb", text: "미리보기 없음" }),
