@@ -526,7 +526,7 @@ def update_ref(rid, data):
         lst = refs()
         for r in lst:
             if r["id"] == rid:
-                r.update({k: v for k, v in data.items() if k in ("state", "error", "channel", "result", "note")})
+                r.update({k: v for k, v in data.items() if k in ("state", "error", "channel", "result", "note", "sample", "sample_state", "sample_topic", "sample_error")})
                 r["updated_at"] = now()
                 kv_set("refs", lst)
                 return r

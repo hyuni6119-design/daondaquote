@@ -112,15 +112,16 @@
       var n = EPS.filter(function (e) { return c.key === "all" || e.channel === c.key; }).length;
       var wait = EPS.filter(function (e) { return (c.key === "all" || e.channel === c.key) && e.review === "검토대기"; }).length;
       var btn = nav.appendChild(h("button", { type: "button", class: "channel-item" + (view.ch === c.key ? " active" : ""),
-        onclick: function (ev) { if (ev.target.closest("[data-edit]")) return; view.ch = c.key; saveView(); drawAll(); } }, [
+        onclick: function (ev) { if (ev.target.closest("[data-edit]")) return; view.ch = c.key; saveView(); if (view.page === "refs") setPage("list"); else drawAll(); } }, [
         h("span", { class: "ci-name" }, [c.key === "all" ? null : h("i", { class: "ci-dot", style: "background:" + c.color }), c.display || c.name]),
         h("span", { class: "cnt" }, [wait ? h("b", { class: "ci-wait", title: "검토 대기", text: "🕵" + wait }) : null, String(n),
           c.key === "all" ? null : h("span", { class: "edit", "data-edit": c.key, title: "채널 이름·색 바꾸기", onclick: function () { openChannelDialog(c); } }, ["✎"])])
       ]));
-      if (view.ch === c.key) activeBtn = btn;
+      if (view.ch === c.key && view.page !== "refs") activeBtn = btn;
+      if (view.page === "refs") btn.classList.remove("active");
     });
     // 고른 채널 바로 아래에 메뉴 (채널 → 메뉴 순서)
-    if (activeBtn) activeBtn.after(SIDE_NAV);
+    if (activeBtn) activeBtn.after(SIDE_NAV); else SIDE_NAV.remove();
     var cur = META.channels.filter(function (c) { return c.key === view.ch; })[0];
     $("pageTitle").textContent = cur ? (cur.display || cur.name) : "전체 채널";
     $("pageSub").textContent = cur ? "이 채널의 편마다 썸네일, 제목, 진행상황을 봅니다" : META.channels.map(function (c) { return c.display || c.name; }).join(" · ") + " — 편마다 썸네일, 제목, 진행상황을 한눈에 봅니다";
@@ -900,12 +901,15 @@
   function setPage(p) {
     view.page = p; saveView();
     Array.prototype.forEach.call(SIDE_NAV.querySelectorAll(".nav-item"), function (b) { b.classList.toggle("active", b.dataset.page === p); });
+    Array.prototype.forEach.call($("toolNav").querySelectorAll(".nav-item"), function (b) { b.classList.toggle("active", b.dataset.page === p); });
+    if (META) drawTabs();
     Array.prototype.forEach.call(document.querySelectorAll(".page"), function (el) { el.hidden = el.id !== "page-" + p; });
     $("sidebar").classList.remove("open");
     drawPage();
     window.scrollTo(0, 0);
   }
   SIDE_NAV.addEventListener("click", function (ev) { var b = ev.target.closest(".nav-item"); if (b) setPage(b.dataset.page); });
+  $("toolNav").addEventListener("click", function (ev) { var b = ev.target.closest(".nav-item"); if (b) setPage(b.dataset.page); });
   function chList() { return META.channels.filter(function (c) { return view.ch === "all" || c.key === view.ch; }); }
   function chEps() { return EPS.filter(function (e) { return view.ch === "all" || e.channel === view.ch; }); }
   function head(title, sub, right) {
@@ -918,9 +922,13 @@
     var cur = META.channels.filter(function (c) { return c.key === view.ch; })[0];
     var chName = cur ? (cur.display || cur.name) : "전체 채널";
     $("pageTitle").textContent = view.page === "list" ? chName : PAGE_NAME[view.page];
-    if (view.page !== "list") $("pageSub").textContent = chName + (view.ch === "all" ? "" : " 채널");
+    if (view.page !== "list") $("pageSub").textContent = view.page === "refs" ? "레퍼런스 채널을 분석해서 프롬프트를 만들어요 (채널과 따로)" : chName + (view.ch === "all" ? "" : " 채널");
+    var pbox = $("page-" + view.page), opened = {};
+    var dkey = function (dt) { var c = dt.closest("[data-k]"); var s = dt.querySelector("summary"); return (c ? c.dataset.k : "") + "|" + (s ? s.textContent : ""); };
+    if (pbox) Array.prototype.forEach.call(pbox.querySelectorAll("details"), function (dt) { opened[dkey(dt)] = dt.open; });
     var fn = { upload: drawUploadPage, rules: drawRulesPage, titles: drawTitlesPage, prompts: drawPromptsPage, refs: drawRefsPage, thumbs: drawThumbsPage, shop: drawShopPage, log: drawLogPage, settings: drawSettingsPage }[view.page];
-    if (fn) fn($("page-" + view.page));
+    if (fn) fn(pbox);
+    if (pbox) Array.prototype.forEach.call(pbox.querySelectorAll("details"), function (dt) { var k = dkey(dt); if (k in opened) dt.open = opened[k]; });
   }
 
   // ⬆ 영상 올리기 — 올린 것 · 올리는 중인 것 전부
@@ -1061,20 +1069,21 @@
   }
 
   // 🔍 채널 분석 — 레퍼런스 채널을 분석해서 프롬프트를 만들어 줌
-  var REFS = [];
+  var REFS = [], REF_DRAFT = {};
   var REF_KEYS = [["summary", "이 채널이 잘 되는 이유"], ["songs_hint", "곡 수·길이"], ["title_rules", "제목 프롬프트"], ["desc_rules", "설명 프롬프트"], ["examples", "예시 제목"],
     ["thumb_prompt", "썸네일 그림 프롬프트"], ["image_prompt", "영상 배경 그림 프롬프트"], ["lyrics_prompt", "노래 가사 프롬프트"]];
   function drawRefsPage(box) {
     if (box.contains(document.activeElement) && /TEXTAREA|INPUT/.test(document.activeElement.tagName)) return;
     box.innerHTML = "";
     box.appendChild(head("채널 분석", "따라 하고 싶은 채널 주소를 넣으면, 서버가 그 채널 인기 영상의 제목·설명·태그·썸네일을 읽고 AI가 똑같은 공식으로 만들 수 있는 프롬프트(제목·설명·썸네일·영상 그림·가사)를 1~2분 안에 써 줘요. 문장을 베끼지 않고 공식만 가져와요."));
-    var url = h("input", { type: "text", placeholder: "예) https://www.youtube.com/@채널이름  또는 그 채널 영상 주소", class: "ref-url" });
-    var note = h("input", { type: "text", placeholder: "메모 (선택) — 예) 썸네일 색감 위주로 봐 줘", class: "ref-url" });
+    var url = h("input", { type: "text", placeholder: "예) https://www.youtube.com/@채널이름  또는 그 채널 영상 주소", class: "ref-url", oninput: function () { REF_DRAFT.url = url.value; } });
+    var note = h("input", { type: "text", placeholder: "메모 (선택) — 예) 썸네일 색감 위주로 봐 줘", class: "ref-url", oninput: function () { REF_DRAFT.note = note.value; } });
+    url.value = REF_DRAFT.url || ""; note.value = REF_DRAFT.note || "";
     box.appendChild(h("div", { class: "card-box" }, [
       h("b", { text: "레퍼런스 채널 넣기" }), url, note,
       h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", onclick: function () {
         if (!url.value.trim()) { toast("채널 주소를 넣어 주세요"); return; }
-        api("POST", "/api/refs", { url: url.value.trim(), note: note.value.trim() }).then(function () { url.value = ""; note.value = ""; toast("분석을 맡겼어요 (1~2분)"); refreshExtra(); }).catch(function (err) { toast(err.message); });
+        api("POST", "/api/refs", { url: url.value.trim(), note: note.value.trim() }).then(function () { REF_DRAFT = {}; toast("분석을 맡겼어요 (1~2분)"); refreshExtra(); }).catch(function (err) { toast(err.message); });
       } }, ["🔍 분석 맡기기"]), h("span", { class: "muted small", text: "유튜브 사용량은 한 번에 4 정도예요 (채널 이름만 넣으면 검색이라 100)" })])
     ]));
     if (!REFS.length) { box.appendChild(h("div", { class: "card-box empty", text: "아직 분석한 채널이 없어요" })); return; }
@@ -1102,6 +1111,7 @@
           if (!res[k[0]]) return;
           kids.push(h("details", { class: "ti-desc", open: k[0] === "summary" }, [h("summary", { class: "small", text: k[1] }), h("pre", { text: res[k[0]] })]));
         });
+        kids.push(sampleBox(rf));
         kids.push(h("div", { class: "row gap" }, [h("span", { class: "small", text: "이 프롬프트를 채널에 넣기:" })].concat(META.channels.map(function (c) {
           return h("button", { type: "button", class: "btn small", onclick: function () {
             if (!confirm((c.display || c.name) + " 채널의 프롬프트(제목·설명·예시·썸네일·영상 그림·가사)를 이 분석 결과로 바꿀까요?\n(만들기 규칙의 곡 수·길이는 그대로예요)")) return;
@@ -1113,8 +1123,33 @@
         rf.state === "완료" || rf.state === "실패" ? h("button", { type: "button", class: "btn small", onclick: function () { api("POST", "/api/refs/" + rf.id + "/retry").then(refreshExtra); } }, ["다시 분석"]) : null,
         h("button", { type: "button", class: "btn small ghost", onclick: function () { if (confirm("이 분석을 지울까요?")) api("DELETE", "/api/refs/" + rf.id).then(refreshExtra); } }, ["지우기"])
       ]));
-      box.appendChild(h("div", { class: "card-box" }, kids));
+      box.appendChild(h("div", { class: "card-box", "data-k": "ref" + rf.id }, kids));
     });
+  }
+
+  // 분석한 프롬프트로 예시 한 편(제목·설명·곡 목록·첫 곡 가사·썸네일 글자·그림 프롬프트)을 시험으로 만들어 봄
+  var SAMPLE_TOPIC = {};
+  function sampleBox(rf) {
+    var sm = rf.sample || {}, busy = rf.sample_state === "요청" || rf.sample_state === "만드는중";
+    var topic = h("input", { type: "text", class: "ref-url", placeholder: "이번 편 주제 (선택) — 예) 가을밤 마음 비우기", oninput: function () { SAMPLE_TOPIC[rf.id] = topic.value; } });
+    topic.value = SAMPLE_TOPIC[rf.id] != null ? SAMPLE_TOPIC[rf.id] : (rf.sample_topic || "");
+    var kids = [h("b", { text: "✨ 예시로 만들어보기" }),
+      h("span", { class: "muted small", text: "이 프롬프트대로 영상 한 편을 만들면 어떻게 나오는지 글로 먼저 시험해 봐요 (유튜브에는 아무것도 안 올라가요)." }),
+      h("div", { class: "row gap sample-go" }, [topic, h("button", { type: "button", class: "btn primary", disabled: busy, onclick: function () {
+        api("POST", "/api/refs/" + rf.id + "/sample", { topic: topic.value }).then(function () { toast("예시를 만드는 중이에요 (1분쯤)"); refreshExtra(); }).catch(function (err) { toast(err.message); });
+      } }, [busy ? "만드는 중…" : rf.sample_state === "완료" ? "다시 만들어보기" : "✨ 만들어보기"])])];
+    if (rf.sample_error) kids.push(h("span", { class: "small set-bad", text: rf.sample_error }));
+    if (rf.sample_state === "완료" && sm.titles) {
+      kids.push(h("div", { class: "sample-sec" }, [h("span", { class: "small", text: "제목 후보" })].concat(sm.titles.map(function (t) { return h("div", { class: "sample-title", text: t }); }))));
+      if (sm.thumb_text) kids.push(h("div", { class: "sample-sec" }, [h("span", { class: "small", text: "썸네일 글자" }), h("div", { class: "sample-thumb", text: sm.thumb_text })]));
+      if (sm.songs && sm.songs.length) kids.push(h("div", { class: "sample-sec" }, [h("span", { class: "small", text: "곡 목록 (" + sm.songs.length + "곡)" }), h("ol", { class: "sample-songs" }, sm.songs.map(function (t) { return h("li", { text: t }); }))]));
+      var ly = sm.lyrics || {};
+      if (ly.text) kids.push(h("details", { class: "ti-desc", open: true }, [h("summary", { class: "small", text: "첫 곡 가사 — " + (ly.title || "") }), ly.style ? h("div", { class: "muted small", text: "수노 스타일: " + ly.style }) : null, h("pre", { text: ly.text })]));
+      if (sm.description) kids.push(h("details", { class: "ti-desc" }, [h("summary", { class: "small", text: "설명 전체" }), h("pre", { text: sm.description })]));
+      if (sm.thumb_prompt) kids.push(h("details", { class: "ti-desc" }, [h("summary", { class: "small", text: "이번 편 썸네일 그림 프롬프트" }), h("pre", { text: sm.thumb_prompt })]));
+      if (sm.image_prompt) kids.push(h("details", { class: "ti-desc" }, [h("summary", { class: "small", text: "이번 편 영상 배경 그림 프롬프트" }), h("pre", { text: sm.image_prompt })]));
+    }
+    return h("div", { class: "sample-box" }, kids);
   }
 
   // 🖼 썸네일 — 16:9 그대로 모아 보기
@@ -1204,7 +1239,7 @@
       // AI 를 기다리는 편이 있으면 5초 뒤 다시
       clearTimeout(refreshExtra.t);
       if (EPS.some(function (e) { return e.ai_state === "요청"; })) refreshExtra.t = setTimeout(function () { refresh(); }, 5000);
-      else if (REFS.some(function (x) { return x.state === "요청" || x.state === "분석중"; })) refreshExtra.t = setTimeout(refreshExtra, 5000);
+      else if (REFS.some(function (x) { return x.state === "요청" || x.state === "분석중" || x.sample_state === "요청" || x.sample_state === "만드는중"; })) refreshExtra.t = setTimeout(refreshExtra, 5000);
     }).catch(function () { /* 다음에 */ });
   }
 

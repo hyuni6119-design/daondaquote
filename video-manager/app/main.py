@@ -196,6 +196,16 @@ def apply_ref(rid: int, key: str, _=Depends(need_user)):
     return out
 
 
+@app.post("/api/refs/{rid}/sample")
+async def sample_ref(rid: int, request: Request, _=Depends(need_user)):
+    """분석 결과 프롬프트로 예시 한 편(제목·설명·곡 목록·가사·썸네일 문구)을 시험으로 만들어 봄"""
+    r = db.ref(rid)
+    if not r or r.get("state") != "완료":
+        raise HTTPException(404)
+    b = await request.json()
+    return db.update_ref(rid, {"sample_state": "요청", "sample_error": "", "sample_topic": str(b.get("topic") or "").strip()[:200]})
+
+
 @app.delete("/api/refs/{rid}")
 def del_ref(rid: int, _=Depends(need_user)):
     db.delete_ref(rid)
