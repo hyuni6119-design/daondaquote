@@ -396,7 +396,8 @@
     var yt = e.video_id ? "https://youtu.be/" + e.video_id : null;
     // 미리보기: 공개 영상은 여기서 바로 재생. 예약·비공개 영상은 유튜브가 다른 사이트 안에서 안 틀어 줘서,
     // 누르면 유튜브 스튜디오(채널 주인으로 로그인된 브라우저)에서 바로 볼 수 있게 엶
-    var studio = e.video_id ? "https://studio.youtube.com/video/" + e.video_id + "/edit" : null;
+    // 황금주파수는 웨일의 두 번째 구글 계정(authuser=1) — 안 붙이면 ‘권한이 없습니다’가 뜸
+    var studio = e.video_id ? "https://studio.youtube.com/video/" + e.video_id + "/edit" + (e.channel === "A" ? "?authuser=1" : "") : null;
     var player = e.video_id && (e.privacy === "public" || e.privacy === "unlisted")
       ? h("iframe", { class: "st-player", src: "https://www.youtube.com/embed/" + e.video_id, title: "동영상 미리보기", allow: "encrypted-media; picture-in-picture", allowfullscreen: true })
       : h(studio ? "a" : "div", { class: "st-player st-player-img", href: studio, target: studio ? "_blank" : null, rel: studio ? "noopener" : null,
