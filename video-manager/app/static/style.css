@@ -598,3 +598,8 @@ label.stack { gap: 6px; }
 .ti-desc .ref-top { margin-top: 8px; }
 
 .copy-btn { align-self: flex-start; margin: 6px 0 0; }
+
+/* 🎵 수노 가사 */
+.suno-lyrics { white-space: pre-wrap; font: inherit; font-size: 13.5px; line-height: 1.6; background: var(--card); padding: 12px; border-radius: 10px; margin: 0; max-height: 420px; overflow: auto; }
+.sample-sec .copy-btn { margin: 0; }
+select.ref-url { cursor: pointer; }

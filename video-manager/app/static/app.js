@@ -3,6 +3,7 @@
 
   var META = null, EPS = [], QUEUE = [], STATUS = {};
   var SIDE_NAV = document.getElementById("sideNav");
+  var TOOL_PAGES = { refs: 1, lyrics: 1 }; // 채널과 따로 있는 도구 메뉴
   var view = { ch: "all", st: "all", mode: "list", month: null, open: null, tab: "details", sortAsc: false };
   try { var saved = JSON.parse(localStorage.getItem("vm-view") || "{}");
     ["ch", "st", "mode", "page"].forEach(function (k) { if (saved[k]) view[k] = saved[k]; });
@@ -112,13 +113,13 @@
       var n = EPS.filter(function (e) { return c.key === "all" || e.channel === c.key; }).length;
       var wait = EPS.filter(function (e) { return (c.key === "all" || e.channel === c.key) && e.review === "검토대기"; }).length;
       var btn = nav.appendChild(h("button", { type: "button", class: "channel-item" + (view.ch === c.key ? " active" : ""),
-        onclick: function (ev) { if (ev.target.closest("[data-edit]")) return; view.ch = c.key; saveView(); if (view.page === "refs") setPage("list"); else drawAll(); } }, [
+        onclick: function (ev) { if (ev.target.closest("[data-edit]")) return; view.ch = c.key; saveView(); if (TOOL_PAGES[view.page]) setPage("list"); else drawAll(); } }, [
         h("span", { class: "ci-name" }, [c.key === "all" ? null : h("i", { class: "ci-dot", style: "background:" + c.color }), c.display || c.name]),
         h("span", { class: "cnt" }, [wait ? h("b", { class: "ci-wait", title: "검토 대기", text: "🕵" + wait }) : null, String(n),
           c.key === "all" ? null : h("span", { class: "edit", "data-edit": c.key, title: "채널 이름·색 바꾸기", onclick: function () { openChannelDialog(c); } }, ["✎"])])
       ]));
-      if (view.ch === c.key && view.page !== "refs") activeBtn = btn;
-      if (view.page === "refs") btn.classList.remove("active");
+      if (view.ch === c.key && !TOOL_PAGES[view.page]) activeBtn = btn;
+      if (TOOL_PAGES[view.page]) btn.classList.remove("active");
     });
     // 고른 채널 바로 아래에 메뉴 (채널 → 메뉴 순서)
     if (activeBtn) activeBtn.after(SIDE_NAV); else SIDE_NAV.remove();
@@ -896,7 +897,7 @@
 
   // ------------------------------------------------------------ 왼쪽 메뉴 화면들 (라이브 관리자처럼)
   var RULES = {}, SYS = {}, LOGS = [];
-  var PAGE_NAME = { list: "영상 목록", upload: "영상 올리기", rules: "만들기 규칙", titles: "제목·설명", prompts: "프롬프트", refs: "채널 분석", thumbs: "썸네일", shop: "쇼핑 태그", log: "실행 기록", settings: "설정·상태" };
+  var PAGE_NAME = { list: "영상 목록", upload: "영상 올리기", rules: "만들기 규칙", titles: "제목·설명", prompts: "프롬프트", refs: "채널 분석", lyrics: "수노 가사", thumbs: "썸네일", shop: "쇼핑 태그", log: "실행 기록", settings: "설정·상태" };
   view.page = view.page || "list";
   function setPage(p) {
     view.page = p; saveView();
@@ -922,11 +923,11 @@
     var cur = META.channels.filter(function (c) { return c.key === view.ch; })[0];
     var chName = cur ? (cur.display || cur.name) : "전체 채널";
     $("pageTitle").textContent = view.page === "list" ? chName : PAGE_NAME[view.page];
-    if (view.page !== "list") $("pageSub").textContent = view.page === "refs" ? "레퍼런스 채널을 분석해서 프롬프트를 만들어요 (채널과 따로)" : chName + (view.ch === "all" ? "" : " 채널");
+    if (view.page !== "list") $("pageSub").textContent = TOOL_PAGES[view.page] ? (view.page === "refs" ? "레퍼런스 채널을 분석해서 프롬프트를 만들어요 (채널과 따로)" : "참고 가사로 수노에 넣을 새 가사를 만들어요 (채널과 따로)") : chName + (view.ch === "all" ? "" : " 채널");
     var pbox = $("page-" + view.page), opened = {};
     var dkey = function (dt) { if (dt.dataset.k) return dt.dataset.k; var c = dt.closest("[data-k]"); var s = dt.querySelector("summary"); return (c ? c.dataset.k : "") + "|" + (s ? s.textContent : ""); };
     if (pbox) Array.prototype.forEach.call(pbox.querySelectorAll("details"), function (dt) { opened[dkey(dt)] = dt.open; });
-    var fn = { upload: drawUploadPage, rules: drawRulesPage, titles: drawTitlesPage, prompts: drawPromptsPage, refs: drawRefsPage, thumbs: drawThumbsPage, shop: drawShopPage, log: drawLogPage, settings: drawSettingsPage }[view.page];
+    var fn = { upload: drawUploadPage, rules: drawRulesPage, titles: drawTitlesPage, prompts: drawPromptsPage, refs: drawRefsPage, lyrics: drawLyricsPage, thumbs: drawThumbsPage, shop: drawShopPage, log: drawLogPage, settings: drawSettingsPage }[view.page];
     if (fn) fn(pbox);
     if (pbox) Array.prototype.forEach.call(pbox.querySelectorAll("details"), function (dt) { var k = dkey(dt); if (k in opened) dt.open = opened[k]; });
   }
@@ -1175,6 +1176,68 @@
     return h("div", { class: "sample-box" }, kids);
   }
 
+  // 🎵 수노 가사 — 참고 가사를 넣으면 같은 공식의 새 가사 + 수노 스타일 + 재사용 가사 프롬프트
+  var LYRICS = [], LY_DRAFT = {}, LY_TOPIC = {};
+  function drawLyricsPage(box) {
+    if (box.contains(document.activeElement) && /TEXTAREA|INPUT|SELECT/.test(document.activeElement.tagName)) return;
+    box.innerHTML = "";
+    box.appendChild(head("수노 가사", "따라 하고 싶은 노래 가사를 붙여 넣으면, AI가 줄 수·후렴 반복·말투 같은 공식만 뽑아서 수노에 그대로 붙여 넣을 새 가사와 스타일을 1분 안에 만들어 줘요. 문장은 베끼지 않아요."));
+    var title = h("input", { type: "text", class: "ref-url", placeholder: "참고 노래 제목 (선택)", oninput: function () { LY_DRAFT.title = title.value; } });
+    var lyr = h("textarea", { rows: "10", placeholder: "참고할 가사를 여기에 붙여 넣으세요 (한 소절만 넣어도 돼요)", oninput: function () { LY_DRAFT.ref = lyr.value; } });
+    var topic = h("input", { type: "text", class: "ref-url", placeholder: "새 노래 주제 (선택) — 예) 돌아가신 어머니께 드리는 기도", oninput: function () { LY_DRAFT.topic = topic.value; } });
+    var ch = h("select", { class: "ref-url", onchange: function () { LY_DRAFT.ch = ch.value; } }, [h("option", { value: "", text: "채널 말투 참고 안 함" })].concat(META.channels.map(function (c) {
+      return h("option", { value: c.key, text: (c.display || c.name) + " 가사 프롬프트도 참고" });
+    })));
+    title.value = LY_DRAFT.title || ""; lyr.value = LY_DRAFT.ref || ""; topic.value = LY_DRAFT.topic || ""; ch.value = LY_DRAFT.ch || "";
+    box.appendChild(h("div", { class: "card-box" }, [h("b", { text: "참고 가사 넣기" }), title, lyr, topic, ch,
+      h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", onclick: function () {
+        if (!lyr.value.trim()) { toast("참고 가사를 넣어 주세요"); return; }
+        api("POST", "/api/lyrics", { title: title.value, ref_lyrics: lyr.value, topic: topic.value, channel: ch.value }).then(function () {
+          LY_DRAFT = {}; toast("가사를 만드는 중이에요 (1분쯤)"); refreshExtra();
+        }).catch(function (err) { toast(err.message); });
+      } }, ["🎵 수노 가사 만들기"])])]));
+    if (!LYRICS.length) { box.appendChild(h("div", { class: "card-box empty", text: "아직 만든 가사가 없어요" })); return; }
+    LYRICS.forEach(function (j, i) {
+      var res = j.result || {}, busy = j.state === "요청" || j.state === "만드는중";
+      var st = { "요청": "⏳ 차례 기다림", "만드는중": "🎵 만드는 중…", "완료": "✅ 완료", "실패": "⚠ 실패" }[j.state] || j.state;
+      var del = function (ev) { ev.preventDefault(); ev.stopPropagation(); if (confirm("이 가사를 지울까요?")) api("DELETE", "/api/lyrics/" + j.id).then(function () { toast("지웠어요"); refreshExtra(); }); };
+      var kids = [h("summary", { class: "row gap ref-sum" }, [
+        h("div", { class: "ti-main" }, [h("b", { text: res.suno_title || j.title || "가사 " + j.id }),
+          h("span", { class: "muted small", text: "참고: " + (j.title || String(j.ref_lyrics || "").split("\n")[0].slice(0, 30)) + (j.topic ? " · 주제: " + j.topic : "") + " · " + String(j.updated_at || "").slice(5, 16).replace("T", " ") })]),
+        h("span", { class: "spacer" }),
+        h("span", { class: "shop-st " + (j.state === "완료" ? "ok" : "wait"), text: st }),
+        h("button", { type: "button", class: "btn small ref-del", onclick: del }, ["🗑 삭제"])
+      ])];
+      if (j.error) kids.push(h("span", { class: "small set-bad", text: j.error }));
+      if (j.state === "완료") {
+        kids.push(h("div", { class: "sample-box" }, [h("b", { text: "수노에 이대로 붙여 넣기" }),
+          sunoField("Song Title (제목)", res.suno_title, false),
+          sunoField("Style of Music (스타일)", res.suno_style, false),
+          sunoField("Lyrics (가사)", res.suno_lyrics, true),
+          res.check ? h("span", { class: "muted small", text: "겹침 점검: " + res.check }) : null]));
+        if (res.analysis) kids.push(h("details", { class: "ti-desc" }, [h("summary", { class: "small", text: "참고 가사 공식 분석" }), h("pre", { text: res.analysis })]));
+        if (res.lyrics_prompt) kids.push(h("details", { class: "ti-desc" }, [h("summary", { class: "small", text: "재사용 가사 프롬프트 (다음에 주제만 바꿔 쓰기)" }), copyBtn(res.lyrics_prompt), h("pre", { text: res.lyrics_prompt }),
+          h("div", { class: "row gap" }, [h("span", { class: "small", text: "채널 가사 프롬프트로 넣기:" })].concat(META.channels.map(function (c) {
+            return h("button", { type: "button", class: "btn small", onclick: function () {
+              if (!confirm((c.display || c.name) + " 채널의 가사 프롬프트를 이걸로 바꿀까요?")) return;
+              api("POST", "/api/lyrics/" + j.id + "/apply/" + c.key).then(function (nr) { RULES[c.key] = nr; toast("넣었어요 — 채널 프롬프트에서 고칠 수 있어요"); }).catch(function (err) { toast(err.message); });
+            } }, ["→ " + (c.display || c.name)]);
+          })))]));
+      }
+      var t2 = h("input", { type: "text", class: "ref-url", placeholder: "다른 주제로 다시 (선택)", oninput: function () { LY_TOPIC[j.id] = t2.value; } });
+      t2.value = LY_TOPIC[j.id] != null ? LY_TOPIC[j.id] : "";
+      kids.push(h("div", { class: "row gap sample-go" }, [t2, h("button", { type: "button", class: "btn small", disabled: busy, onclick: function () {
+        api("POST", "/api/lyrics/" + j.id + "/retry", t2.value ? { topic: t2.value } : {}).then(function () { delete LY_TOPIC[j.id]; toast("다시 만드는 중이에요"); refreshExtra(); });
+      } }, ["🔁 다시 만들기"])]));
+      kids.push(h("details", { class: "ti-desc" }, [h("summary", { class: "small", text: "넣었던 참고 가사 보기" }), h("pre", { text: j.ref_lyrics || "" })]));
+      box.appendChild(h("details", { class: "card-box ref-card", "data-k": "ly" + j.id, open: i === 0 }, kids));
+    });
+  }
+  function sunoField(label, text, big) {
+    return h("div", { class: "sample-sec" }, [h("div", { class: "row gap" }, [h("span", { class: "small", text: label }), copyBtn(text || "")]),
+      h(big ? "pre" : "div", { class: big ? "suno-lyrics" : "sample-title", text: text || "" })]);
+  }
+
   // 🖼 썸네일 — 16:9 그대로 모아 보기
   function drawThumbsPage(box) {
     box.innerHTML = "";
@@ -1256,13 +1319,13 @@
   }
 
   function refreshExtra() {
-    return Promise.all([api("GET", "/api/rules"), api("GET", "/api/system"), api("GET", "/api/refs")]).then(function (r) {
-      RULES = r[0]; SYS = r[1]; REFS = r[2];
+    return Promise.all([api("GET", "/api/rules"), api("GET", "/api/system"), api("GET", "/api/refs"), api("GET", "/api/lyrics")]).then(function (r) {
+      RULES = r[0]; SYS = r[1]; REFS = r[2]; LYRICS = r[3];
       if (view.page !== "list") drawPage();
       // AI 를 기다리는 편이 있으면 5초 뒤 다시
       clearTimeout(refreshExtra.t);
       if (EPS.some(function (e) { return e.ai_state === "요청"; })) refreshExtra.t = setTimeout(function () { refresh(); }, 5000);
-      else if (REFS.some(function (x) { return x.state === "요청" || x.state === "분석중" || x.sample_state === "요청" || x.sample_state === "만드는중"; })) refreshExtra.t = setTimeout(refreshExtra, 5000);
+      else if (REFS.some(function (x) { return x.state === "요청" || x.state === "분석중" || x.sample_state === "요청" || x.sample_state === "만드는중"; }) || LYRICS.some(function (x) { return x.state === "요청" || x.state === "만드는중"; })) refreshExtra.t = setTimeout(refreshExtra, 5000);
     }).catch(function () { /* 다음에 */ });
   }
 

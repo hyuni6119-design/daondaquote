@@ -533,6 +533,46 @@ def update_ref(rid, data):
     return None
 
 
+# ------------------------------------------------------------ 수노 가사 만들기
+# 사장님이 참고 가사를 넣으면 '요청' → 서버 일꾼이 구조·말투를 분석해서 수노에 바로 넣을 스타일·가사·가사 프롬프트를 만듦
+LYRIC_FIELDS = ("state", "error", "result", "topic", "channel", "ref_lyrics", "title")
+
+
+def lyric_jobs():
+    return kv_get("lyrics", []) or []
+
+
+def lyric_job(jid):
+    return next((r for r in lyric_jobs() if r["id"] == jid), None)
+
+
+def add_lyric_job(data):
+    with _ref_lock:
+        lst = lyric_jobs()
+        jid = max([r["id"] for r in lst] + [0]) + 1
+        item = {"id": jid, "state": "요청", "error": "", "result": {}, "created_at": now(), "updated_at": now()}
+        item.update({k: data.get(k, "") for k in ("topic", "channel", "ref_lyrics", "title")})
+        kv_set("lyrics", [item] + lst[:29])
+    return item
+
+
+def update_lyric_job(jid, data):
+    with _ref_lock:
+        lst = lyric_jobs()
+        for r in lst:
+            if r["id"] == jid:
+                r.update({k: v for k, v in data.items() if k in LYRIC_FIELDS})
+                r["updated_at"] = now()
+                kv_set("lyrics", lst)
+                return r
+    return None
+
+
+def delete_lyric_job(jid):
+    with _ref_lock:
+        kv_set("lyrics", [r for r in lyric_jobs() if r["id"] != jid])
+
+
 def delete_ref(rid):
     with _ref_lock:
         kv_set("refs", [r for r in refs() if r["id"] != rid])

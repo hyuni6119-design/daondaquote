@@ -206,6 +206,61 @@ async def sample_ref(rid: int, request: Request, _=Depends(need_user)):
     return db.update_ref(rid, {"sample_state": "요청", "sample_error": "", "sample_topic": str(b.get("topic") or "").strip()[:200]})
 
 
+@app.get("/api/lyrics")
+def get_lyrics(_=Depends(need_user)):
+    return db.lyric_jobs()
+
+
+@app.post("/api/lyrics")
+async def post_lyrics(request: Request, _=Depends(need_user)):
+    """참고 가사 → 수노용 스타일·새 가사·가사 프롬프트 (서버 일꾼이 1분 안에 씀)"""
+    b = await request.json()
+    ref = str(b.get("ref_lyrics") or "").strip()[:8000]
+    if not ref:
+        raise HTTPException(400, "참고 가사를 넣어 주세요")
+    item = db.add_lyric_job({"ref_lyrics": ref, "topic": str(b.get("topic") or "").strip()[:300],
+                             "channel": str(b.get("channel") or "")[:10], "title": str(b.get("title") or "").strip()[:100]})
+    db.add_log("수노 가사 만들기를 맡겼습니다" + (f" ({item['title']})" if item["title"] else ""))
+    return item
+
+
+@app.patch("/api/lyrics/{jid}")
+async def patch_lyrics(jid: int, request: Request, _=Depends(need_user)):
+    r = db.update_lyric_job(jid, await request.json())
+    if not r:
+        raise HTTPException(404)
+    return r
+
+
+@app.post("/api/lyrics/{jid}/retry")
+async def retry_lyrics(jid: int, request: Request, _=Depends(need_user)):
+    b = await request.json()
+    data = {"state": "요청", "error": ""}
+    if "topic" in b:
+        data["topic"] = str(b.get("topic") or "").strip()[:300]
+    r = db.update_lyric_job(jid, data)
+    if not r:
+        raise HTTPException(404)
+    return r
+
+
+@app.post("/api/lyrics/{jid}/apply/{key}")
+def apply_lyrics(jid: int, key: str, _=Depends(need_user)):
+    """만든 가사 프롬프트를 이 채널의 가사 프롬프트로 넣음"""
+    r = db.lyric_job(jid)
+    if not r or r.get("state") != "완료" or not any(c["key"] == key for c in config.CHANNELS):
+        raise HTTPException(404)
+    out = db.set_rules(key, {"lyrics_prompt": (r.get("result") or {}).get("lyrics_prompt", "")})
+    db.add_log(f"{_name(key)} 가사 프롬프트를 ‘수노 가사 만들기’ 결과로 바꿨습니다")
+    return out
+
+
+@app.delete("/api/lyrics/{jid}")
+def del_lyrics(jid: int, _=Depends(need_user)):
+    db.delete_lyric_job(jid)
+    return {"ok": True}
+
+
 @app.delete("/api/refs/{rid}")
 def del_ref(rid: int, _=Depends(need_user)):
     db.delete_ref(rid)
