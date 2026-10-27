@@ -667,3 +667,10 @@ label.mk-check { display: flex !important; flex-direction: row !important; align
 .mk-all-btn { font-size: 15px; padding: 12px 20px; flex: none; }
 @media (max-width: 640px) { .mk-all .row { flex-wrap: wrap; } .ref-pick { width: 100%; } }
 .mk-sel { max-width: 360px; }
+
+/* 📌 내가 할 일 */
+.todo-box { margin-bottom: 16px; border: 2px solid var(--gold-line); }
+.todo-h { font-size: 16px; }
+.todo-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding-top: 10px; border-top: 1px solid var(--line2); }
+.todo-row.info { opacity: .75; }
+.todo-ic { font-size: 18px; text-align: center; }

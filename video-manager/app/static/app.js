@@ -288,13 +288,58 @@
     $("nowNext").textContent = s.next || "—";
   }
 
+  // 📌 내가 할 일 — 고른 채널에서 사장님이 직접 해야 할 것만 (전체 채널이면 채널마다)
+  function todosOf(key) {
+    var out = [], rl = RULES[key] || {}, nm = chInfo(key).name;
+    var mine = EPS.filter(function (e) { return e.channel === key; });
+    var go = function (page, epId) { return function () { if (epId) view.makeEp = epId; view.ch = key; saveView(); setPage(page); drawAll(); }; };
+    var rv = mine.filter(function (e) { return e.review === "검토대기"; });
+    if (rv.length) out.push({ ic: "🕵", t: rv.map(function (e) { return e.ep + "편"; }).join(", ") + " 검토하고 승인하기", sub: "아래 「검토할 영상」에서 보고 승인하면 공개 날짜에 예약돼요", btn: "검토하기", fn: function () { $("reviewBox").scrollIntoView({ behavior: "smooth" }); } });
+    var stuck = QUEUE.filter(function (q) { return q.state === "막힘" && mine.some(function (e) { return e.id === q.episode_id; }); });
+    if (stuck.length) out.push({ ic: "⚠", t: "막힌 일 " + stuck.length + "건 확인하기", sub: stuck[0].note || stuck[0].label, btn: "보기", fn: function () { $("queue").scrollIntoView({ behavior: "smooth" }); } });
+    if (!rl.ref_id && !rl.ref_note) out.push({ ic: "📚", t: "레퍼런스 채널 정하기", sub: "정해 두면 제목·썸네일·가사가 그 채널 스타일로 나와요", btn: "채널 설정", fn: go("chset") });
+    var making = mine.filter(function (e) { return !e.video_id; }).sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+    making.forEach(function (e) {
+      var mk = e.make || {}, jobs = mk.jobs || {}, all = jobs.all || {}, done = mk.done || {}, songs = mk.songs || [];
+      var tag = e.ep + "편 (" + dotDate(e.date) + ")";
+      if (all.state === "요청" || all.state === "만드는중") { out.push({ ic: "⏳", t: tag + " AI가 만드는 중이에요", sub: "기다리면 돼요 — 다 되면 여기에 다음 할 일이 떠요", info: true }); return; }
+      if (!e.title && !songs.length) { out.push({ ic: "✨", t: tag + " 「한 번에 다 만들기」 누르기", sub: "주제부터 가사까지 AI가 만들어요", btn: "만들러 가기", fn: go("make", e.id) }); return; }
+      if (mk.thumb_prompt && !thumbSrc(e)) out.push({ ic: "🖼", t: tag + " 썸네일 그림 뽑아서 넣기", sub: "프롬프트 복사 → ChatGPT에 붙여 넣기 → 나온 그림 넣기", btn: "하러 가기", fn: go("make", e.id) });
+      if (songs.length && !done.songs) {
+        var sd = mk.song_done || {}, n = songs.filter(function (x, i) { return sd[i]; }).length;
+        out.push({ ic: "🎵", t: tag + " 수노로 노래 만들기 (" + n + "/" + songs.length + "곡)", sub: "곡마다 가사 복사 → 수노에 붙여 넣기 → mp3 받기", btn: "하러 가기", fn: go("make", e.id) });
+      } else if (done.songs && !done.video) out.push({ ic: "💬", t: tag + " 영상 만들어 달라고 Claude에게 말하기", sub: "채팅에 「" + nm + " " + e.ep + "편 영상 만들어 줘」 + mp3 폴더", btn: "자세히", fn: go("make", e.id) });
+    });
+    if (!making.length) {
+      var last = mine.map(function (e) { return e.date; }).filter(Boolean).sort().pop();
+      out.push({ ic: "＋", t: "다음 편 시작하기" + (last ? " (마지막 편 " + dotDate(last) + ")" : ""), sub: "「＋ 새 편 시작」을 누르면 AI가 한 번에 다 만들어요", btn: "만들러 가기", fn: go("make") });
+    }
+    return out;
+  }
+  function drawTodo() {
+    var box = $("todoBox"); box.innerHTML = "";
+    var keys = view.ch === "all" ? META.channels.map(function (c) { return c.key; }) : [view.ch];
+    var rows = [];
+    keys.forEach(function (k) { todosOf(k).forEach(function (t) { t.key = k; rows.push(t); }); });
+    var real = rows.filter(function (t) { return !t.info; }).length;
+    box.appendChild(h("div", { class: "row gap" }, [h("b", { class: "todo-h", text: "📌 내가 할 일" }), h("span", { class: "muted small", text: real ? real + "개" : "지금은 없어요 ✅" })]));
+    rows.forEach(function (t) {
+      box.appendChild(h("div", { class: "todo-row" + (t.info ? " info" : "") }, [
+        h("span", { class: "todo-ic", text: t.ic }),
+        h("div", { class: "ti-main" }, [h("div", {}, [view.ch === "all" ? chTag2(t.key) : null, view.ch === "all" ? " " : null, h("b", { text: t.t })]), t.sub ? h("span", { class: "muted small", text: t.sub }) : null]),
+        t.btn ? h("button", { type: "button", class: "btn small", onclick: t.fn }, [t.btn]) : null
+      ]));
+    });
+  }
+
   function drawQueue() {
     var box = $("queue"); box.textContent = "";
-    var items = QUEUE.filter(function (q) { return q.state !== "완료" || Date.now() - new Date(q.updated_at) < 864e5; });
+    var epCh = {}; EPS.forEach(function (e) { epCh[e.id] = e.channel; });
+    var items = QUEUE.filter(function (q) { return (q.state !== "완료" || Date.now() - new Date(q.updated_at) < 864e5) && (view.ch === "all" || epCh[q.episode_id] === view.ch); });
     if (!items.length) { box.hidden = true; return; }
     box.hidden = false;
     var left = items.filter(function (q) { return q.state !== "완료"; }).length;
-    box.appendChild(h("b", { text: left ? "시켜 두신 일 " + left + "건 — PC가 차례로 합니다" : "시켜 두신 일 — 다 했습니다" }));
+    box.appendChild(h("b", { text: left ? "시켜 두신 일 " + left + "건 — 차례로 해요" : "시켜 두신 일 — 다 했어요" }));
     items.forEach(function (q) {
       box.appendChild(h("div", { class: "q-item" }, [
         h("div", { class: "what" }, [
@@ -693,7 +738,7 @@
   }
 
   function drawAll() {
-    drawTabs(); drawSummary(); drawStatus(); drawQueue(); drawReview();
+    drawTabs(); drawSummary(); drawStatus(); drawTodo(); drawQueue(); drawReview();
     $("list").hidden = view.mode !== "list"; $("cards").hidden = view.mode !== "cards"; $("cal").hidden = view.mode !== "cal";
     if (view.mode === "list") drawList(); else if (view.mode === "cards") drawCards(); else drawCal();
     if (view.open && $("detail").open) {
@@ -1577,7 +1622,7 @@
   function refreshExtra() {
     return Promise.all([api("GET", "/api/rules"), api("GET", "/api/system"), api("GET", "/api/refs"), api("GET", "/api/lyrics"), api("GET", "/api/saved-refs")]).then(function (r) {
       RULES = r[0]; SYS = r[1]; REFS = r[2]; LYRICS = r[3]; SAVED = r[4];
-      if (view.page !== "list") drawPage();
+      if (view.page !== "list") drawPage(); else drawTodo();
       // AI 를 기다리는 편이 있으면 5초 뒤 다시
       clearTimeout(refreshExtra.t);
       var mkBusy = EPS.some(function (e) { return e.make && e.make.jobs && Object.keys(e.make.jobs).some(function (k) { var j = e.make.jobs[k]; return j.state === "요청" || j.state === "만드는중"; }); });
