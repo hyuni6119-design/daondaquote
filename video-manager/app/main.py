@@ -97,6 +97,28 @@ def thumb(name: str, _=Depends(need_user)):
 
 # ---------------------------------------------------------------- 기본 정보
 
+@app.post("/api/channels")
+async def add_channel(request: Request, _=Depends(need_user)):
+    b = await request.json()
+    name = str(b.get("name") or "").strip()[:40]
+    if not name:
+        raise HTTPException(400, "채널 이름을 써 주세요")
+    if any(c["name"] == name for c in config.CHANNELS):
+        raise HTTPException(409, "같은 이름의 채널이 이미 있습니다")
+    color = str(b.get("color") or "#7c5cff")[:9]
+    c = db.add_channel(name, str(b.get("display") or "").strip()[:60], color)
+    db.add_log(f"채널 ‘{name}’을 넣었습니다")
+    return c
+
+
+@app.patch("/api/channels/{key}")
+async def patch_channel(key: str, request: Request, _=Depends(need_user)):
+    if not any(c["key"] == key for c in config.CHANNELS):
+        raise HTTPException(404)
+    b = await request.json()
+    return db.update_channel(key, {k: str(b.get(k) or "").strip()[:60] for k in ("name", "display", "color")})
+
+
 @app.get("/api/meta")
 def meta(_=Depends(need_user)):
     return {"channels": config.CHANNELS, "steps": config.STEPS, "states": config.STEP_STATES,

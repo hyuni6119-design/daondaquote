@@ -83,6 +83,8 @@ def conn():
         _conn.executescript(SCHEMA)
         # 검토 칸 (검토대기 · 승인 · 다시만들기) — 예전 DB에도 붙여 줌
         _conn.executescript(UPLOAD_SCHEMA)
+        _conn.executescript(CHANNEL_SCHEMA)
+        load_channels(_conn)
         for col in ("review TEXT DEFAULT ''", "publish_at TEXT DEFAULT ''"):  # 예전 DB에도 붙여 줌
             try:
                 _conn.execute("ALTER TABLE episodes ADD COLUMN " + col)
@@ -407,3 +409,64 @@ def update_upload(uid, fields):
 
 def delete_upload(uid):
     q("DELETE FROM uploads WHERE id=?", (uid,))
+
+
+# ---------------------------------------------------------------- 채널 (사이트에서 늘릴 수 있음)
+# 처음에는 config.CHANNELS(황금주파수 A · 불심명언 B)로 채우고, 그 뒤로는 이 표가 기준.
+# 이름(name)은 라이브 관리자의 채널 이름과 같아야 조회수 채우기·올리기 일꾼이 그 채널 구글 계정을 찾습니다.
+
+CHANNEL_SCHEMA = """
+CREATE TABLE IF NOT EXISTS channels (
+  key TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  display TEXT DEFAULT '',
+  color TEXT DEFAULT '#7c5cff',
+  sort INTEGER DEFAULT 0
+);
+"""
+
+
+def load_channels(c=None):
+    """채널 표 → config.CHANNELS (다른 곳은 그대로 config.CHANNELS 를 봄)"""
+    c = c or conn()
+    if not c.execute("SELECT COUNT(*) FROM channels").fetchone()[0]:
+        for i, ch in enumerate(config.CHANNELS):
+            c.execute("INSERT INTO channels (key, name, display, color, sort) VALUES (?,?,?,?,?)",
+                      (ch["key"], ch["name"], ch.get("display") or ch["name"], ch.get("color") or "#7c5cff", i))
+        c.commit()
+    got = [dict(r) for r in c.execute("SELECT key, name, display, color FROM channels ORDER BY sort, key")]
+    config.CHANNELS[:] = got
+    return got
+
+
+def _next_key():
+    used = {c["key"] for c in config.CHANNELS}
+    n = 0
+    while True:
+        k, x = "", n
+        while True:
+            k = chr(65 + x % 26) + k
+            x = x // 26 - 1
+            if x < 0:
+                break
+        if k not in used:
+            return k
+        n += 1
+
+
+def add_channel(name, display="", color="#7c5cff"):
+    key = _next_key()
+    with _lock:
+        r = conn().execute("SELECT COALESCE(MAX(sort), 0) + 1 FROM channels").fetchone()[0]
+        conn().execute("INSERT INTO channels (key, name, display, color, sort) VALUES (?,?,?,?,?)", (key, name, display or name, color, r))
+        conn().commit()
+    load_channels()
+    return next(c for c in config.CHANNELS if c["key"] == key)
+
+
+def update_channel(key, fields):
+    sets = [(k, v) for k, v in fields.items() if k in ("name", "display", "color") and v]
+    if sets:
+        q(f"UPDATE channels SET {', '.join(k + '=?' for k, _ in sets)} WHERE key=?", (*[v for _, v in sets], key))
+    load_channels()
+    return next((c for c in config.CHANNELS if c["key"] == key), None)

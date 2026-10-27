@@ -9,17 +9,29 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<div class="shell">
+<aside class="sidebar" id="sidebar">
+  <div class="side-brand">
+    <div class="brand-logo"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="13" rx="3" stroke="#fff" stroke-width="2"/><path d="M10 9.5v4l3.5-2z" fill="#fff"/></svg></div>
+    <span>영상 관리</span>
+  </div>
+  <div class="sidebar-channels">
+    <div class="section-label">MY CHANNELS <button type="button" id="addChannel" class="side-add" title="채널 추가" aria-label="채널 추가">＋</button></div>
+    <div id="channelNav"></div>
+  </div>
+  <div class="sidebar-bottom">
+    <a class="side-link" href="https://168-119-152-95.sslip.io/" target="_blank" rel="noopener">📡 라이브 관리자 열기</a>
+    <a class="side-link" href="/logout">나가기</a>
+  </div>
+</aside>
 <div class="wrap">
   <header class="top">
-    <div class="brand">
-      <div class="brand-logo"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="13" rx="3" stroke="#fff" stroke-width="2"/><path d="M10 9.5v4l3.5-2z" fill="#fff"/></svg></div>
-      <div>
-        <span class="eyebrow">VIDEO MANAGER</span>
-        <h1>영상 관리</h1>
-        <p class="sub">황금주파수 TV · 불심명언 — 편마다 썸네일, 제목, 진행상황을 한눈에 봅니다</p>
-      </div>
+    <button type="button" class="menu-toggle" id="menuToggle" aria-label="메뉴">☰</button>
+    <div>
+      <span class="eyebrow">VIDEO MANAGER</span>
+      <h1 id="pageTitle">전체 채널</h1>
+      <p class="sub" id="pageSub">편마다 썸네일, 제목, 진행상황을 한눈에 봅니다</p>
     </div>
-    <a class="btn ghost small" href="/logout">나가기</a>
   </header>
 
   <!-- PC의 Claude가 지금 무엇을 하는지 -->
@@ -49,7 +61,6 @@
 
   <!-- 고르기 -->
   <div class="toolbar">
-    <div class="tabs" id="chTabs"></div>
     <div class="tabs" id="stTabs"></div>
     <div class="spacer"></div>
     <div class="tabs" id="viewTabs">
@@ -85,19 +96,33 @@
     <div class="cal-grid" id="calGrid"></div>
   </main>
 
-  <section class="log">
-    <div class="row">
-      <h2>지나온 일</h2>
-      <div class="spacer"></div>
-      <button class="btn small" id="btnStats" hidden>조회수 새로고침</button>
-    </div>
+  <!-- 지나온 일 (닫혀 있음 · 눌러서 열기) -->
+  <details class="log" id="logBox">
+    <summary><b>지나온 일</b> <span class="muted small" id="logCount"></span>
+      <span class="spacer"></span><button class="btn small" id="btnStats" hidden>조회수 새로고침</button></summary>
     <ol id="logList"></ol>
-  </section>
+  </details>
+</div>
 </div>
 
 <!-- 편 자세히 보기 -->
 <dialog id="detail" class="studio">
   <div id="detailBody"></div>
+</dialog>
+
+<!-- 채널 넣기 · 고치기 -->
+<dialog id="chDlg">
+  <form id="chForm" class="stack">
+    <h3 id="chDlgTitle">채널 넣기</h3>
+    <label>채널 이름 <input name="name" required maxlength="40" placeholder="라이브 관리자의 채널 이름과 똑같이"></label>
+    <label>보이는 이름 (선택) <input name="display" maxlength="60" placeholder="예: 황금주파수 TV"></label>
+    <label class="row gap">색 <input type="color" name="color" value="#7c5cff"></label>
+    <p class="muted small">이름이 라이브 관리자의 채널 이름과 같아야 조회수·썸네일 채우기와 사이트에서 올리기가 그 채널로 됩니다.</p>
+    <div class="row gap">
+      <button class="btn primary" type="submit">저장</button>
+      <button class="btn" type="button" id="chCancel">닫기</button>
+    </div>
+  </form>
 </dialog>
 
 <!-- 새 편 -->

@@ -455,3 +455,50 @@ dialog.updlg { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 4
 .up-foot .spacer { flex: 1; }
 .small.bad { color: var(--bad); }
 @media (max-width: 640px) { .up-two { grid-template-columns: 1fr; } .up-row { grid-template-columns: auto minmax(0, 1fr); } }
+
+/* ═════ 라이브 관리자 같은 왼쪽 채널 목록 ═════ */
+:root { --side: #15132a; --side-2: #1e1b3a; --side-text: #c9c5e0; --side-muted: #7f7a9e; }
+.shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100vh; }
+.shell > .wrap { width: 100%; max-width: 1280px; margin: 0 auto; box-sizing: border-box; }
+.sidebar { background: linear-gradient(180deg, var(--side-2), var(--side) 60%); color: var(--side-text); padding: 22px 14px 16px;
+  display: flex; flex-direction: column; gap: 22px; position: sticky; top: 0; height: 100vh; overflow-y: auto; box-sizing: border-box; z-index: 20; }
+.side-brand { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 800; font-size: 18px; letter-spacing: -0.04em; padding: 0 6px; }
+.side-brand .brand-logo { width: 34px; height: 34px; border-radius: 11px; }
+.side-brand .brand-logo svg { width: 18px; height: 18px; }
+.sidebar .section-label { display: flex; justify-content: space-between; align-items: center; font-size: 11px; letter-spacing: .14em; color: var(--side-muted); font-weight: 800; padding: 0 6px 8px; }
+.side-add { width: 26px; height: 26px; border-radius: 8px; border: 0; background: rgba(255,255,255,.08); color: #fff; font-size: 16px; cursor: pointer; }
+.side-add:hover { background: var(--brand); }
+.sidebar-channels { flex: 1; }
+.channel-item { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 9px 12px; border: 0; border-radius: 11px; background: none;
+  color: var(--side-text); text-align: left; gap: 8px; font: inherit; font-weight: 500; cursor: pointer; }
+.channel-item:hover { background: rgba(255,255,255,.05); }
+.channel-item.active { background: rgba(255, 77, 109, .14); color: #fff; }
+.ci-name { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ci-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.channel-item .cnt { font-size: 12px; color: var(--side-muted); display: flex; align-items: center; gap: 6px; }
+.ci-wait { color: #ffb4c0; font-weight: 700; }
+.channel-item .edit { opacity: 0; padding: 0 2px; }
+.channel-item:hover .edit { opacity: 1; }
+.sidebar-bottom { display: flex; flex-direction: column; gap: 6px; font-size: 13px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.06); border-radius: 14px; padding: 12px 14px; }
+.side-link { color: var(--side-text); text-decoration: none; }
+.side-link:hover { color: #fff; }
+.top { display: flex; align-items: center; gap: 12px; }
+.menu-toggle { display: none; width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); font-size: 18px; cursor: pointer; }
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { position: fixed; left: 0; top: 0; width: 260px; transform: translateX(-100%); transition: transform .22s; }
+  .sidebar.open { transform: none; box-shadow: var(--shadow-lg); }
+  .menu-toggle { display: inline-grid; place-items: center; }
+}
+
+/* 지나온 일: 닫혀 있다가 눌러서 열기 · 작게 */
+details.log { margin-top: 18px; padding: 10px 16px; }
+details.log > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; font-size: 14px; }
+details.log > summary::-webkit-details-marker { display: none; }
+details.log > summary::before { content: "▸"; color: var(--dim); transition: transform .15s; }
+details.log[open] > summary::before { transform: rotate(90deg); }
+details.log > summary .spacer { flex: 1; }
+details.log ol { max-height: 260px; overflow-y: auto; margin-top: 8px; }
+details.log li { padding: 5px 2px; font-size: 12.5px; }
+#chForm input[type=color] { width: 52px; height: 34px; padding: 2px; border-radius: 10px; cursor: pointer; }
+#chForm label.row { align-items: center; }

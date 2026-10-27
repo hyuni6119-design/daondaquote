@@ -103,11 +103,22 @@
 
   // ------------------------------------------------------------ 고르기 줄
   function drawTabs() {
-    var ct = $("chTabs"); ct.textContent = "";
-    [{ key: "all", name: "두 채널" }].concat(META.channels).forEach(function (c) {
-      ct.appendChild(h("button", { class: view.ch === c.key ? "on" : "", text: c.name,
-        onclick: function () { view.ch = c.key; saveView(); drawAll(); } }));
+    // 왼쪽 채널 목록 (라이브 관리자처럼) — 채널은 ＋ 로 늘릴 수 있음
+    if (view.ch !== "all" && !META.channels.some(function (c) { return c.key === view.ch; })) view.ch = "all";
+    var nav = $("channelNav"); nav.textContent = "";
+    [{ key: "all", name: "전체 채널" }].concat(META.channels).forEach(function (c) {
+      var n = EPS.filter(function (e) { return c.key === "all" || e.channel === c.key; }).length;
+      var wait = EPS.filter(function (e) { return (c.key === "all" || e.channel === c.key) && e.review === "검토대기"; }).length;
+      nav.appendChild(h("button", { type: "button", class: "channel-item" + (view.ch === c.key ? " active" : ""),
+        onclick: function (ev) { if (ev.target.closest("[data-edit]")) return; view.ch = c.key; saveView(); $("sidebar").classList.remove("open"); drawAll(); } }, [
+        h("span", { class: "ci-name" }, [c.key === "all" ? null : h("i", { class: "ci-dot", style: "background:" + c.color }), c.display || c.name]),
+        h("span", { class: "cnt" }, [wait ? h("b", { class: "ci-wait", title: "검토 대기", text: "🕵" + wait }) : null, String(n),
+          c.key === "all" ? null : h("span", { class: "edit", "data-edit": c.key, title: "채널 이름·색 바꾸기", onclick: function () { openChannelDialog(c); } }, ["✎"])])
+      ]));
     });
+    var cur = META.channels.filter(function (c) { return c.key === view.ch; })[0];
+    $("pageTitle").textContent = cur ? (cur.display || cur.name) : "전체 채널";
+    $("pageSub").textContent = cur ? "이 채널의 편마다 썸네일, 제목, 진행상황을 봅니다" : META.channels.map(function (c) { return c.display || c.name; }).join(" · ") + " — 편마다 썸네일, 제목, 진행상황을 한눈에 봅니다";
     var st = $("stTabs"); st.textContent = "";
     var counts = {};
     EPS.forEach(function (e) { if (view.ch === "all" || e.channel === view.ch) counts[e.badge] = (counts[e.badge] || 0) + 1; });
@@ -289,6 +300,7 @@
 
   function drawLog(items) {
     var ol = $("logList"); ol.textContent = "";
+    $("logCount").textContent = items.length ? "최근 " + items.length + "개 · 눌러서 열기" : "";
     if (!items.length) ol.appendChild(h("li", {}, [h("span", { text: "" }), h("span", { class: "muted", text: "아직 기록이 없습니다" })]));
     items.forEach(function (r) {
       var d = new Date(r.at);
@@ -848,6 +860,28 @@
   }
 
   $("btnUp").addEventListener("click", function () { openUpload(null); });
+
+  // ------------------------------------------------------------ 채널 넣기 · 고치기
+  var chEditing = null;
+  function openChannelDialog(c) {
+    chEditing = c || null;
+    var f = $("chForm");
+    $("chDlgTitle").textContent = c ? "채널 고치기 · " + c.name : "채널 넣기";
+    f.name.value = c ? c.name : ""; f.display.value = c ? (c.display || "") : ""; f.color.value = c ? c.color : "#7c5cff";
+    $("chDlg").showModal();
+  }
+  $("addChannel").addEventListener("click", function () { openChannelDialog(null); });
+  $("chCancel").addEventListener("click", function () { $("chDlg").close(); });
+  $("chForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var f = ev.target, body = { name: f.name.value.trim(), display: f.display.value.trim(), color: f.color.value };
+    (chEditing ? api("PATCH", "/api/channels/" + chEditing.key, body) : api("POST", "/api/channels", body)).then(function () {
+      $("chDlg").close(); toast(chEditing ? "채널을 고쳤어요" : "채널 ‘" + body.name + "’을 넣었어요");
+      return api("GET", "/api/meta").then(function (m) { META = m; refresh(); });
+    }).catch(function (err) { toast(err.message); });
+  });
+  $("menuToggle").addEventListener("click", function () { $("sidebar").classList.toggle("open"); });
+  $("btnStats").addEventListener("click", function (ev) { ev.preventDefault(); });
   $("upDlg").addEventListener("close", function () { upOpen = null; });
   // 창 전체 어디에 끌어다 놓아도 브라우저가 파일을 열지 않게
   ["dragover", "drop"].forEach(function (ev) { $("upDlg").addEventListener(ev, function (e) { if (e.target.type !== "file") e.preventDefault(); }); });
