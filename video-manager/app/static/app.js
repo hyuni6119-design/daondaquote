@@ -1024,6 +1024,7 @@
         return h("label", { class: "rule" }, [h("span", { text: label }), h("div", { class: "rule-in" }, [f[k], h("em", { text: unit })])]);
       };
       var est = h("div", { class: "rule-est" });
+      var sel = function (opts, v) { var el = h("select", { class: "ref-url" }, opts.map(function (o) { return h("option", { value: o[0], text: o[1] }); })); el.value = v; return el; };
       var calc = function () {
         var mins = Math.round((+f.songs.value || 0) * (+f.song_seconds.value || 0) * (+f.loops.value || 0) / 60);
         var lo = +f.min_minutes.value || 0, hi = +f.max_minutes.value || 0;
@@ -1043,6 +1044,13 @@
           num("every_days", "며칠마다 한 편", "일", 1, 30),
           h("label", { class: "rule" }, [h("span", { text: "공개 시각 (한국)" }), h("div", { class: "rule-in" }, [f.publish_time])]),
           h("label", { class: "rule" }, [h("span", { text: "처음 올릴 때" }), h("div", { class: "rule-in" }, [h("b", { text: "일부 공개 → 검토 → 승인하면 예약" })])])
+        ]),
+        h("b", { class: "auto-h", text: "🤖 자동화" }),
+        h("div", { class: "rules-grid" }, [
+          h("label", { class: "rule" }, [h("span", { text: "다음 편 알아서 시작" }), h("div", { class: "rule-in" }, [f.auto_make = sel([["1", "켜기 — 서버가 알아서 시작"], ["0", "끄기 — 내가 눌러서 시작"]], String(r.auto_make != null ? r.auto_make : 1))])]),
+          num("lead_days", "공개 며칠 전에 시작", "일 전", 1, 30),
+          h("label", { class: "rule" }, [h("span", { text: "썸네일 그림 AI (유료)" }), h("div", { class: "rule-in" }, [f.thumb_ai = sel([["", "끄기 — 프롬프트만 (무료)"], ["gpt-image-1-mini", "가장 저렴 (mini) · 한 장 약 20원"], ["gpt-image-1", "좋은 것 · 한 장 약 90원"]], r.thumb_ai || "")])]),
+          h("label", { class: "rule" }, [h("span", { text: "그림 품질" }), h("div", { class: "rule-in" }, [f.thumb_quality = sel([["low", "낮음 (가장 쌈)"], ["medium", "보통"], ["high", "높음 (비쌈)"]], r.thumb_quality || "medium")])])
         ]),
         est,
         h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", onclick: function () {

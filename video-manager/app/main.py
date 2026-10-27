@@ -189,8 +189,11 @@ def apply_ref(rid: int, key: str, _=Depends(need_user)):
         raise HTTPException(404)
     res = r.get("result") or {}
     src = (r.get("channel") or {}).get("title") or r["url"]
-    data = {k: res.get(k, "") for k in ("title_rules", "desc_rules", "examples", "thumb_prompt", "image_prompt", "lyrics_prompt")}
-    data["ref_note"] = f"{src} 분석 ({str(r.get('updated_at', ''))[:10]})"
+    names = db.ref_names_of(r)
+    me = next((c.get("display") or c["name"] for c in config.CHANNELS if c["key"] == key), key)
+    data = {k: db.swap_names(res.get(k, ""), names, me) for k in ("title_rules", "desc_rules", "examples", "thumb_prompt", "image_prompt", "lyrics_prompt")}
+    data["ref_note"] = src
+    data["ref_names"] = ",".join(n for n in names if n)
     out = db.set_rules(key, data)
     db.add_log(f"{_name(key)} 프롬프트를 레퍼런스 ‘{src}’ 분석 결과로 바꿨습니다")
     return out
@@ -303,8 +306,11 @@ def apply_saved_ref(sid: int, key: str, _=Depends(need_user)):
     if not r or not any(c["key"] == key for c in config.CHANNELS):
         raise HTTPException(404)
     res = r.get("result") or {}
-    data = {k: res.get(k, "") for k in ("title_rules", "desc_rules", "examples", "thumb_prompt", "image_prompt", "lyrics_prompt")}
-    data.update({"ref_id": sid, "ref_note": r["name"]})
+    names = db.ref_names_of(r)
+    me = next((c.get("display") or c["name"] for c in config.CHANNELS if c["key"] == key), key)
+    # 느낌만 가져오고 이름은 우리 채널 것으로
+    data = {k: db.swap_names(res.get(k, ""), names, me) for k in ("title_rules", "desc_rules", "examples", "thumb_prompt", "image_prompt", "lyrics_prompt")}
+    data.update({"ref_id": sid, "ref_note": r["name"], "ref_names": ",".join(n for n in names if n)})
     out = db.set_rules(key, data)
     db.add_log(f"{_name(key)} 레퍼런스 채널을 ‘{r['name']}’로 바꿨습니다")
     return out

@@ -674,3 +674,4 @@ label.mk-check { display: flex !important; flex-direction: row !important; align
 .todo-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding-top: 10px; border-top: 1px solid var(--line2); }
 .todo-row.info { opacity: .75; }
 .todo-ic { font-size: 18px; text-align: center; }
+.auto-h { font-size: 14px; margin-top: 4px; }

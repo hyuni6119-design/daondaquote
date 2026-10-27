@@ -496,7 +496,26 @@ DEFAULT_RULES = {
     "lyrics_prompt": "",     # 노래 가사 프롬프트
     "ref_note": "",          # 어느 레퍼런스 채널 분석에서 왔는지
     "ref_id": 0,             # 📚 저장한 레퍼런스 채널 번호 (0 = 없음)
+    "ref_names": "",         # 레퍼런스 채널 이름들 (쉼표) — 글에 절대 쓰지 않고 우리 채널 이름으로 바꿈
+    "auto_make": 1,          # 1 = 공개 날짜가 다가오면 서버가 다음 편을 알아서 시작 (레퍼런스가 있을 때만)
+    "lead_days": 4,          # 마지막 편 공개일이 며칠 남았을 때 다음 편을 시작하나
+    "thumb_ai": "",          # 썸네일 그림 AI ("" = 끔 · 프롬프트만 / "gpt-image-1-mini" 등 = 그림까지 자동 · 유료)
+    "thumb_quality": "medium",  # low / medium / high
 }
+
+
+def swap_names(text, names, to):
+    """레퍼런스 채널 이름(@아이디 포함)을 우리 채널 이름으로"""
+    s = str(text or "")
+    for n in sorted({x.strip() for x in names if x and x.strip()}, key=len, reverse=True):
+        s = s.replace(n, to)
+    return s
+
+
+def ref_names_of(r):
+    ci = r.get("channel") or {}
+    hd = str(ci.get("handle") or "")
+    return [r.get("name", ""), ci.get("title", ""), hd, hd.lstrip("@")]
 
 
 # ------------------------------------------------------------ 레퍼런스 채널 분석
