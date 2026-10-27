@@ -9,6 +9,8 @@
     python 밤작업.py 상태 <편번호> <상태> [메모]     사이트에 진행 상황 적기 (노래중·영상중·올리는중·실패…)
     python 밤작업.py 썸네일 <편번호> <그림파일>      1280×720으로 맞추고(제미나이 표시 잘라냄) 사이트 썸네일로 넣기
     python 밤작업.py 배경 <그림파일> <저장할 png>    영상 배경 그림을 16:9 1920×1080으로 (제미나이 표시 잘라냄)
+    python 밤작업.py 지금                          지금 시각(숫자) — 다운로드 버튼 누르기 전에 적어 둠
+    python 밤작업.py 받기 <지금 숫자> <옮길 곳>       그 뒤에 새로 받아진 제미나이 그림만 옮김 (예전 파일은 절대 안 건드림)
     python 밤작업.py 올리기 <편번호> <완성.mp4> <수록곡.json> [썸네일.jpg]
                                                   사이트로 영상을 올리고 유튜브로 보내기 (서버가 일부 공개로 올림)
 
@@ -29,6 +31,8 @@ from urllib import error, request
 # 채널 이름 → PC 작업 폴더 (효과합성.py 의 --채널 이름과 같음)
 뿌리 = {"불심명언": Path(r"D:\불심명언"), "황금주파수": Path(r"D:\골드TV")}
 조각 = 32 * 1024 * 1024
+# 그림은 실사풍으로 (사장님 지시 2026-10-27 · 애니메이션·일러스트 말고)
+실사 = "진짜 사진 같은 실사풍(DSLR 사진, 사실적인 빛과 질감) — 애니메이션·일러스트·디지털 아트 느낌 금지"
 
 
 def 부르기(방법, 경로, 몸=None, 머리=None, 날것=False):
@@ -50,7 +54,7 @@ def 부르기(방법, 경로, 몸=None, 머리=None, 날것=False):
 
 def 파일보내기(경로, 파일, 이름, 형식):
     """multipart 로 파일 하나 보내기"""
-    경계 = "----밤작업경계"
+    경계 = "----nightjobboundary7c1"
     몸 = (f"--{경계}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{이름}\"\r\n"
           f"Content-Type: {형식}\r\n\r\n").encode("utf-8") + Path(파일).read_bytes() + f"\r\n--{경계}--\r\n".encode()
     return 부르기("POST", 경로, 몸, {"Content-Type": f"multipart/form-data; boundary={경계}"}, 날것=True)
@@ -91,7 +95,7 @@ def 할일():
         out.append({
             "id": e["id"], "채널": ch.get(e["channel"], e["channel"]), "편": e["ep"], "공개날짜": e["date"],
             "제목": e.get("title", ""), "썸네일있음": bool(e.get("thumb")), "썸네일문구": mk.get("thumb_text", ""),
-            "썸네일프롬프트": mk.get("thumb_prompt", ""), "배경프롬프트": rl.get("image_prompt", "") or "글자 없는 16:9 영상 배경 — 썸네일과 같은 분위기의 장면",
+            "썸네일프롬프트": mk.get("thumb_prompt", "") + (" " + 실사 if mk.get("thumb_prompt") else ""), "배경프롬프트": (rl.get("image_prompt", "") or "썸네일과 같은 분위기의 장면") + " — 글자 없는 16:9 가로, " + 실사,
             "규칙": {k: rl.get(k) for k in ("songs", "loops", "min_minutes", "max_minutes")},
             "곡": [{"번호": i + 1, "제목": s["title"], "스타일": s.get("style", ""), "가사": 가사만(s["lyrics"])} for i, s in enumerate(곡)],
             "PC상태": (mk.get("pc") or {}).get("state", ""), "폴더": 폴더(ch.get(e["channel"], e["channel"]), e["date"]),
@@ -122,8 +126,11 @@ def 상태(편번호, 무엇, 메모=""):
 
 
 def 그림맞추기(그림, 낼곳, 폭, 높이):
-    # 4% 키워 가운데를 잘라 제미나이 오른쪽 아래 ✦ 표시를 없애고 16:9로
-    vf = f"scale={int(폭 * 1.04)}:{int(높이 * 1.04)}:force_original_aspect_ratio=increase,crop={폭}:{높이}"
+    # 4% 키워 가운데를 잘라 16:9로
+    # 제미나이 ✦ 표시(오른쪽 아래)는 그 자리만 흐리게 지움
+    mx, my, mw = int(폭 * 0.900), int(높이 * 0.822), int(폭 * 0.052)
+    vf = (f"scale={int(폭 * 1.04)}:{int(높이 * 1.04)}:force_original_aspect_ratio=increase,crop={폭}:{높이},"
+          f"delogo=x={mx}:y={my}:w={mw}:h={mw}")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(그림), "-vf", vf, "-q:v", "3", str(낼곳)], check=True)
 
 
@@ -178,6 +185,22 @@ def 올리기(편번호, 영상, 차례, 썸=None):
     print("올리기 번호:", uid)
 
 
+def 받기(이후, 옮길곳, 기다림=90):
+    """다운로드 폴더에서 '이후' 시각 뒤에 새로 생긴 Gemini 그림 하나만 옮김"""
+    import time
+    받는곳 = Path.home() / "Downloads"
+    for _ in range(기다림 // 3):
+        새것 = [p for p in 받는곳.glob("Gemini_Generated_Image_*.png") if p.stat().st_mtime > float(이후)]
+        if 새것 and not list(받는곳.glob("*.crdownload")):
+            f = max(새것, key=lambda p: p.stat().st_mtime)
+            Path(옮길곳).parent.mkdir(parents=True, exist_ok=True)
+            f.replace(옮길곳)
+            print("받았습니다:", f.name, "→", 옮길곳)
+            return
+        time.sleep(3)
+    raise SystemExit("새 그림이 다운로드되지 않았어요 (예전 파일은 그대로 둠)")
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     if not a:
@@ -192,6 +215,11 @@ if __name__ == "__main__":
         썸네일(int(a[1]), a[2])
     elif a[0] == "배경":
         배경(a[1], a[2])
+    elif a[0] == "지금":
+        import time
+        print(int(time.time()))
+    elif a[0] == "받기":
+        받기(a[1], a[2])
     elif a[0] == "올리기":
         올리기(int(a[1]), a[2], a[3], a[4] if len(a) > 4 else None)
     else:
