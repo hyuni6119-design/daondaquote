@@ -924,7 +924,7 @@
     $("pageTitle").textContent = view.page === "list" ? chName : PAGE_NAME[view.page];
     if (view.page !== "list") $("pageSub").textContent = view.page === "refs" ? "레퍼런스 채널을 분석해서 프롬프트를 만들어요 (채널과 따로)" : chName + (view.ch === "all" ? "" : " 채널");
     var pbox = $("page-" + view.page), opened = {};
-    var dkey = function (dt) { var c = dt.closest("[data-k]"); var s = dt.querySelector("summary"); return (c ? c.dataset.k : "") + "|" + (s ? s.textContent : ""); };
+    var dkey = function (dt) { if (dt.dataset.k) return dt.dataset.k; var c = dt.closest("[data-k]"); var s = dt.querySelector("summary"); return (c ? c.dataset.k : "") + "|" + (s ? s.textContent : ""); };
     if (pbox) Array.prototype.forEach.call(pbox.querySelectorAll("details"), function (dt) { opened[dkey(dt)] = dt.open; });
     var fn = { upload: drawUploadPage, rules: drawRulesPage, titles: drawTitlesPage, prompts: drawPromptsPage, refs: drawRefsPage, thumbs: drawThumbsPage, shop: drawShopPage, log: drawLogPage, settings: drawSettingsPage }[view.page];
     if (fn) fn(pbox);
@@ -1087,15 +1087,20 @@
       } }, ["🔍 분석 맡기기"]), h("span", { class: "muted small", text: "유튜브 사용량은 한 번에 4 정도예요 (채널 이름만 넣으면 검색이라 100)" })])
     ]));
     if (!REFS.length) { box.appendChild(h("div", { class: "card-box empty", text: "아직 분석한 채널이 없어요" })); return; }
-    REFS.forEach(function (rf) {
+    var delRef = function (rf, ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      if (confirm("‘" + ((rf.channel || {}).title || rf.url) + "’ 분석을 지울까요?\n(채널에 넣어 둔 프롬프트는 그대로 남아요)")) api("DELETE", "/api/refs/" + rf.id).then(function () { toast("지웠어요"); refreshExtra(); });
+    };
+    REFS.forEach(function (rf, i) {
       var ci = rf.channel || {}, res = rf.result || {};
       var st = { "요청": "⏳ 차례 기다림", "분석중": "🔍 분석 중…", "완료": "✅ 완료", "실패": "⚠ 실패" }[rf.state] || rf.state;
-      var kids = [h("div", { class: "row gap" }, [
+      var kids = [h("summary", { class: "row gap ref-sum" }, [
         ci.thumb ? h("img", { class: "ref-avatar", src: ci.thumb, alt: "" }) : null,
         h("div", { class: "ti-main" }, [h("b", { text: ci.title || rf.url }),
           h("span", { class: "muted small", text: (ci.handle ? ci.handle + " · " : "") + (ci.subs ? "구독자 " + ci.subs.toLocaleString() + " · " : "") + (ci.videos ? "영상 " + ci.videos + "개 · " : "") + String(rf.updated_at || "").slice(5, 16).replace("T", " ") })]),
         h("span", { class: "spacer" }),
-        h("span", { class: "shop-st " + (rf.state === "완료" ? "ok" : "wait"), text: st })
+        h("span", { class: "shop-st " + (rf.state === "완료" ? "ok" : "wait"), text: st }),
+        h("button", { type: "button", class: "btn small ref-del", title: "이 분석 지우기", onclick: function (ev) { delRef(rf, ev); } }, ["🗑 삭제"])
       ])];
       if (rf.note) kids.push(h("span", { class: "muted small", text: "메모: " + rf.note }));
       if (rf.error) kids.push(h("span", { class: "small set-bad", text: rf.error }));
@@ -1125,9 +1130,10 @@
       }
       kids.push(h("div", { class: "row gap" }, [
         rf.state === "완료" || rf.state === "실패" ? h("button", { type: "button", class: "btn small", onclick: function () { api("POST", "/api/refs/" + rf.id + "/retry").then(refreshExtra); } }, ["다시 분석"]) : null,
-        h("button", { type: "button", class: "btn small ghost", onclick: function () { if (confirm("이 분석을 지울까요?")) api("DELETE", "/api/refs/" + rf.id).then(refreshExtra); } }, ["지우기"])
+        h("button", { type: "button", class: "btn small ghost", onclick: function (ev) { delRef(rf, ev); } }, ["🗑 삭제"])
       ]));
-      box.appendChild(h("div", { class: "card-box", "data-k": "ref" + rf.id }, kids));
+      // 채널마다 접기 · 처음엔 맨 위(가장 최근) 분석만 펼침
+      box.appendChild(h("details", { class: "card-box ref-card", "data-k": "ref" + rf.id, open: i === 0 }, kids));
     });
   }
 
