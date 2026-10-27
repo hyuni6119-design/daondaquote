@@ -138,9 +138,68 @@ def get_rules(_=Depends(need_user)):
 async def put_rules(key: str, request: Request, _=Depends(need_user)):
     if not any(c["key"] == key for c in config.CHANNELS):
         raise HTTPException(404)
-    r = db.set_rules(key, await request.json())
-    db.add_log(f"{_name(key)} 만들기 규칙을 바꿨습니다 (곡 {r['songs']}개 × {r['loops']}바퀴 · {r['min_minutes']}~{r['max_minutes']}분)")
+    body = await request.json()
+    r = db.set_rules(key, body)
+    if "songs" in body:
+        db.add_log(f"{_name(key)} 만들기 규칙을 바꿨습니다 (곡 {r['songs']}개 × {r['loops']}바퀴 · {r['min_minutes']}~{r['max_minutes']}분)")
+    else:
+        db.add_log(f"{_name(key)} 프롬프트를 바꿨습니다")
     return r
+
+
+@app.get("/api/refs")
+def get_refs(_=Depends(need_user)):
+    return db.refs()
+
+
+@app.post("/api/refs")
+async def post_ref(request: Request, _=Depends(need_user)):
+    b = await request.json()
+    url = str(b.get("url") or "").strip()[:300]
+    if not url:
+        raise HTTPException(400, "채널 주소를 넣어 주세요")
+    item = db.add_ref(url, str(b.get("note") or "").strip()[:500])
+    db.add_log(f"레퍼런스 채널 분석을 맡겼습니다: {url}")
+    return item
+
+
+@app.patch("/api/refs/{rid}")
+async def patch_ref(rid: int, request: Request, _=Depends(need_user)):
+    r = db.update_ref(rid, await request.json())
+    if not r:
+        raise HTTPException(404)
+    return r
+
+
+@app.post("/api/refs/{rid}/retry")
+def retry_ref(rid: int, _=Depends(need_user)):
+    r = db.update_ref(rid, {"state": "요청", "error": ""})
+    if not r:
+        raise HTTPException(404)
+    return r
+
+
+@app.post("/api/refs/{rid}/apply/{key}")
+def apply_ref(rid: int, key: str, _=Depends(need_user)):
+    """분석 결과 프롬프트를 이 채널 프롬프트로 넣음 (넣은 뒤 프롬프트 메뉴에서 고칠 수 있음)"""
+    r = db.ref(rid)
+    if not r or r.get("state") != "완료":
+        raise HTTPException(404)
+    if not any(c["key"] == key for c in config.CHANNELS):
+        raise HTTPException(404)
+    res = r.get("result") or {}
+    src = (r.get("channel") or {}).get("title") or r["url"]
+    data = {k: res.get(k, "") for k in ("title_rules", "desc_rules", "examples", "thumb_prompt", "image_prompt", "lyrics_prompt")}
+    data["ref_note"] = f"{src} 분석 ({str(r.get('updated_at', ''))[:10]})"
+    out = db.set_rules(key, data)
+    db.add_log(f"{_name(key)} 프롬프트를 레퍼런스 ‘{src}’ 분석 결과로 바꿨습니다")
+    return out
+
+
+@app.delete("/api/refs/{rid}")
+def del_ref(rid: int, _=Depends(need_user)):
+    db.delete_ref(rid)
+    return {"ok": True}
 
 
 @app.get("/api/system")

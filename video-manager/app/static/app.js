@@ -895,7 +895,7 @@
 
   // ------------------------------------------------------------ 왼쪽 메뉴 화면들 (라이브 관리자처럼)
   var RULES = {}, SYS = {}, LOGS = [];
-  var PAGE_NAME = { list: "영상 목록", upload: "영상 올리기", rules: "만들기 규칙", titles: "제목·설명", thumbs: "썸네일", shop: "쇼핑 태그", log: "실행 기록", settings: "설정·상태" };
+  var PAGE_NAME = { list: "영상 목록", upload: "영상 올리기", rules: "만들기 규칙", titles: "제목·설명", prompts: "프롬프트", refs: "채널 분석", thumbs: "썸네일", shop: "쇼핑 태그", log: "실행 기록", settings: "설정·상태" };
   view.page = view.page || "list";
   function setPage(p) {
     view.page = p; saveView();
@@ -919,7 +919,7 @@
     var chName = cur ? (cur.display || cur.name) : "전체 채널";
     $("pageTitle").textContent = view.page === "list" ? chName : PAGE_NAME[view.page];
     if (view.page !== "list") $("pageSub").textContent = chName + (view.ch === "all" ? "" : " 채널");
-    var fn = { upload: drawUploadPage, rules: drawRulesPage, titles: drawTitlesPage, thumbs: drawThumbsPage, shop: drawShopPage, log: drawLogPage, settings: drawSettingsPage }[view.page];
+    var fn = { upload: drawUploadPage, rules: drawRulesPage, titles: drawTitlesPage, prompts: drawPromptsPage, refs: drawRefsPage, thumbs: drawThumbsPage, shop: drawShopPage, log: drawLogPage, settings: drawSettingsPage }[view.page];
     if (fn) fn($("page-" + view.page));
   }
 
@@ -996,21 +996,8 @@
     if (box.contains(document.activeElement) && /TEXTAREA|INPUT/.test(document.activeElement.tagName)) return; // 쓰는 중에는 다시 그리지 않음
     box.innerHTML = "";
     box.appendChild(head("제목·설명", "채널마다 제목 규칙과 예시를 적어 두면, AI가 그 규칙대로 제목 후보 3개와 설명 첫머리를 만들어요. 고르면 유튜브에도 바로 반영돼요."));
-    chList().forEach(function (c) {
-      var r = RULES[c.key] || {};
-      var tr = h("textarea", { rows: "4", placeholder: "예) 이모지로 시작 · 날짜/시간 표현은 넣지 않기 · 끝은 “| 부처님 노래 | 키워드·키워드” 로" }); tr.value = r.title_rules || "";
-      var dr = h("textarea", { rows: "3", placeholder: "예) 첫 두 줄은 위로하는 말 · 기복신앙식 과장 금지" }); dr.value = r.desc_rules || "";
-      var ex = h("textarea", { rows: "4", placeholder: "잘된 제목 예시를 한 줄에 하나씩" }); ex.value = r.examples || "";
-      box.appendChild(h("details", { class: "card-box rules-card", open: view.ch !== "all" }, [
-        h("summary", {}, [chTag2(c.key), h("b", { text: " 제목·설명 규칙" })]),
-        h("label", { class: "stack" }, [h("span", { class: "small", text: "제목 규칙" }), tr]),
-        h("label", { class: "stack" }, [h("span", { class: "small", text: "설명 첫머리 규칙" }), dr]),
-        h("label", { class: "stack" }, [h("span", { class: "small", text: "잘된 제목 예시" }), ex]),
-        h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", onclick: function () {
-          api("PUT", "/api/rules/" + c.key, { title_rules: tr.value, desc_rules: dr.value, examples: ex.value }).then(function (nr) { RULES[c.key] = nr; toast("규칙을 저장했어요"); }).catch(function (err) { toast(err.message); });
-        } }, ["규칙 저장"])])
-      ]));
-    });
+    box.appendChild(h("div", { class: "card-box" }, [h("span", { class: "small", text: "제목·설명 규칙과 예시는 🧠 프롬프트 메뉴에서 정해요." }),
+      h("button", { type: "button", class: "btn small", onclick: function () { setPage("prompts"); } }, ["🧠 프롬프트 열기"])]));
     var list = chEps().slice().sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
     var tbl = h("div", { class: "card-box" });
     list.forEach(function (e) {
@@ -1041,6 +1028,93 @@
     });
     box.appendChild(head("편마다 제목", list.length + "편"));
     box.appendChild(tbl);
+  }
+
+  // 🧠 프롬프트 — 채널마다 제목·설명·썸네일·영상 그림·가사 프롬프트
+  var PROMPT_FIELDS = [
+    ["title_rules", "제목 프롬프트", 5, "예) 이모지로 시작 · 후킹 문구 + 약속 · 끝은 “| 부처님 노래 | 키워드·키워드” 꼴"],
+    ["desc_rules", "설명 프롬프트", 5, "예) 첫 두 줄은 위로하는 말 · 수록곡 타임라인 · 해시태그 3개"],
+    ["examples", "잘된 제목 예시 (한 줄에 하나)", 4, ""],
+    ["thumb_prompt", "썸네일 그림 프롬프트", 5, "그림 AI에 넣을 프롬프트 + 썸네일 글자 넣는 법"],
+    ["image_prompt", "영상 배경 그림 프롬프트", 4, "긴 노래 영상 화면에 깔 그림 (16:9)"],
+    ["lyrics_prompt", "노래 가사 프롬프트", 7, "주제 · 말투 · 절/후렴 구조 · 줄 수 · 피할 표현 · 수노 스타일 태그"]
+  ];
+  function drawPromptsPage(box) {
+    if (box.contains(document.activeElement) && /TEXTAREA|INPUT/.test(document.activeElement.tagName)) return; // 쓰는 중에는 다시 그리지 않음
+    box.innerHTML = "";
+    box.appendChild(head("프롬프트", "채널마다 AI에게 줄 프롬프트예요. 영상을 만들 때(가사·썸네일·영상 그림·제목·설명) 이 내용을 그대로 따라요. 🔍 채널 분석에서 레퍼런스 채널 결과를 한 번에 넣을 수도 있어요."));
+    chList().forEach(function (c) {
+      var r = RULES[c.key] || {};
+      var f = {};
+      var kids = [h("summary", {}, [chTag2(c.key), h("b", { text: " 프롬프트" }), r.ref_note ? h("span", { class: "muted small", text: "  · " + r.ref_note }) : null])];
+      PROMPT_FIELDS.forEach(function (p) {
+        f[p[0]] = h("textarea", { rows: String(p[2]), placeholder: p[3] });
+        f[p[0]].value = r[p[0]] || "";
+        kids.push(h("label", { class: "stack" }, [h("span", { class: "small", text: p[1] }), f[p[0]]]));
+      });
+      kids.push(h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", onclick: function () {
+        var body = {}; Object.keys(f).forEach(function (k) { body[k] = f[k].value; });
+        api("PUT", "/api/rules/" + c.key, body).then(function (nr) { RULES[c.key] = nr; toast((c.display || c.name) + " 프롬프트를 저장했어요"); }).catch(function (err) { toast(err.message); });
+      } }, ["저장"])]));
+      box.appendChild(h("details", { class: "card-box rules-card", open: view.ch !== "all" || chList().length === 1 }, kids));
+    });
+  }
+
+  // 🔍 채널 분석 — 레퍼런스 채널을 분석해서 프롬프트를 만들어 줌
+  var REFS = [];
+  var REF_KEYS = [["summary", "이 채널이 잘 되는 이유"], ["songs_hint", "곡 수·길이"], ["title_rules", "제목 프롬프트"], ["desc_rules", "설명 프롬프트"], ["examples", "예시 제목"],
+    ["thumb_prompt", "썸네일 그림 프롬프트"], ["image_prompt", "영상 배경 그림 프롬프트"], ["lyrics_prompt", "노래 가사 프롬프트"]];
+  function drawRefsPage(box) {
+    if (box.contains(document.activeElement) && /TEXTAREA|INPUT/.test(document.activeElement.tagName)) return;
+    box.innerHTML = "";
+    box.appendChild(head("채널 분석", "따라 하고 싶은 채널 주소를 넣으면, 서버가 그 채널 인기 영상의 제목·설명·태그·썸네일을 읽고 AI가 똑같은 공식으로 만들 수 있는 프롬프트(제목·설명·썸네일·영상 그림·가사)를 1~2분 안에 써 줘요. 문장을 베끼지 않고 공식만 가져와요."));
+    var url = h("input", { type: "text", placeholder: "예) https://www.youtube.com/@채널이름  또는 그 채널 영상 주소", class: "ref-url" });
+    var note = h("input", { type: "text", placeholder: "메모 (선택) — 예) 썸네일 색감 위주로 봐 줘", class: "ref-url" });
+    box.appendChild(h("div", { class: "card-box" }, [
+      h("b", { text: "레퍼런스 채널 넣기" }), url, note,
+      h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", onclick: function () {
+        if (!url.value.trim()) { toast("채널 주소를 넣어 주세요"); return; }
+        api("POST", "/api/refs", { url: url.value.trim(), note: note.value.trim() }).then(function () { url.value = ""; note.value = ""; toast("분석을 맡겼어요 (1~2분)"); refreshExtra(); }).catch(function (err) { toast(err.message); });
+      } }, ["🔍 분석 맡기기"]), h("span", { class: "muted small", text: "유튜브 사용량은 한 번에 4 정도예요 (채널 이름만 넣으면 검색이라 100)" })])
+    ]));
+    if (!REFS.length) { box.appendChild(h("div", { class: "card-box empty", text: "아직 분석한 채널이 없어요" })); return; }
+    REFS.forEach(function (rf) {
+      var ci = rf.channel || {}, res = rf.result || {};
+      var st = { "요청": "⏳ 차례 기다림", "분석중": "🔍 분석 중…", "완료": "✅ 완료", "실패": "⚠ 실패" }[rf.state] || rf.state;
+      var kids = [h("div", { class: "row gap" }, [
+        ci.thumb ? h("img", { class: "ref-avatar", src: ci.thumb, alt: "" }) : null,
+        h("div", { class: "ti-main" }, [h("b", { text: ci.title || rf.url }),
+          h("span", { class: "muted small", text: (ci.handle ? ci.handle + " · " : "") + (ci.subs ? "구독자 " + ci.subs.toLocaleString() + " · " : "") + (ci.videos ? "영상 " + ci.videos + "개 · " : "") + String(rf.updated_at || "").slice(5, 16).replace("T", " ") })]),
+        h("span", { class: "spacer" }),
+        h("span", { class: "shop-st " + (rf.state === "완료" ? "ok" : "wait"), text: st })
+      ])];
+      if (rf.note) kids.push(h("span", { class: "muted small", text: "메모: " + rf.note }));
+      if (rf.error) kids.push(h("span", { class: "small set-bad", text: rf.error }));
+      if (ci.top && ci.top.length) {
+        kids.push(h("div", { class: "ref-top" }, ci.top.slice(0, 4).map(function (v) {
+          return h("a", { class: "ref-vid", href: "https://youtu.be/" + v.id, target: "_blank", rel: "noopener" }, [
+            h("div", { class: "yt-thumb" }, [h("img", { src: "https://i.ytimg.com/vi/" + v.id + "/mqdefault.jpg", alt: "" })]),
+            h("span", { class: "small", text: v.title }), h("span", { class: "muted small", text: "조회수 " + v.views.toLocaleString() + " · " + v.min + "분" })]);
+        })));
+      }
+      if (rf.state === "완료") {
+        REF_KEYS.forEach(function (k) {
+          if (!res[k[0]]) return;
+          kids.push(h("details", { class: "ti-desc", open: k[0] === "summary" }, [h("summary", { class: "small", text: k[1] }), h("pre", { text: res[k[0]] })]));
+        });
+        kids.push(h("div", { class: "row gap" }, [h("span", { class: "small", text: "이 프롬프트를 채널에 넣기:" })].concat(META.channels.map(function (c) {
+          return h("button", { type: "button", class: "btn small", onclick: function () {
+            if (!confirm((c.display || c.name) + " 채널의 프롬프트(제목·설명·예시·썸네일·영상 그림·가사)를 이 분석 결과로 바꿀까요?\n(만들기 규칙의 곡 수·길이는 그대로예요)")) return;
+            api("POST", "/api/refs/" + rf.id + "/apply/" + c.key).then(function (nr) { RULES[c.key] = nr; toast((c.display || c.name) + " 프롬프트에 넣었어요 — 🧠 프롬프트에서 고칠 수 있어요"); }).catch(function (err) { toast(err.message); });
+          } }, ["→ " + (c.display || c.name)]);
+        }))));
+      }
+      kids.push(h("div", { class: "row gap" }, [
+        rf.state === "완료" || rf.state === "실패" ? h("button", { type: "button", class: "btn small", onclick: function () { api("POST", "/api/refs/" + rf.id + "/retry").then(refreshExtra); } }, ["다시 분석"]) : null,
+        h("button", { type: "button", class: "btn small ghost", onclick: function () { if (confirm("이 분석을 지울까요?")) api("DELETE", "/api/refs/" + rf.id).then(refreshExtra); } }, ["지우기"])
+      ]));
+      box.appendChild(h("div", { class: "card-box" }, kids));
+    });
   }
 
   // 🖼 썸네일 — 16:9 그대로 모아 보기
@@ -1124,12 +1198,13 @@
   }
 
   function refreshExtra() {
-    return Promise.all([api("GET", "/api/rules"), api("GET", "/api/system")]).then(function (r) {
-      RULES = r[0]; SYS = r[1];
+    return Promise.all([api("GET", "/api/rules"), api("GET", "/api/system"), api("GET", "/api/refs")]).then(function (r) {
+      RULES = r[0]; SYS = r[1]; REFS = r[2];
       if (view.page !== "list") drawPage();
       // AI 를 기다리는 편이 있으면 5초 뒤 다시
       clearTimeout(refreshExtra.t);
       if (EPS.some(function (e) { return e.ai_state === "요청"; })) refreshExtra.t = setTimeout(function () { refresh(); }, 5000);
+      else if (REFS.some(function (x) { return x.state === "요청" || x.state === "분석중"; })) refreshExtra.t = setTimeout(refreshExtra, 5000);
     }).catch(function () { /* 다음에 */ });
   }
 

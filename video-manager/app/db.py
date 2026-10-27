@@ -490,7 +490,52 @@ DEFAULT_RULES = {
     "title_rules": "",       # 제목 짓는 규칙 (AI가 따름)
     "desc_rules": "",        # 설명 첫머리 규칙
     "examples": "",          # 잘된 제목 예시 (한 줄에 하나)
+    "thumb_prompt": "",      # 썸네일 그림 프롬프트
+    "image_prompt": "",      # 영상 배경 그림 프롬프트
+    "lyrics_prompt": "",     # 노래 가사 프롬프트
+    "ref_note": "",          # 어느 레퍼런스 채널 분석에서 왔는지
 }
+
+
+# ------------------------------------------------------------ 레퍼런스 채널 분석
+# 사이트에서 채널 주소를 넣으면 '요청' → 서버 일꾼(라이브 관리자 tools/vm-upload.js)이 유튜브에서 읽고
+# AI로 제목·설명·썸네일·영상 그림·가사 프롬프트를 만들어 '완료' 로 적음
+_ref_lock = threading.Lock()  # kv_get/kv_set 이 _lock 을 쓰므로 따로
+
+
+def refs():
+    return kv_get("refs", []) or []
+
+
+def ref(rid):
+    return next((r for r in refs() if r["id"] == rid), None)
+
+
+def add_ref(url, note=""):
+    with _ref_lock:
+        lst = refs()
+        rid = max([r["id"] for r in lst] + [0]) + 1
+        item = {"id": rid, "url": url, "note": note, "state": "요청", "error": "", "channel": {}, "result": {},
+                "created_at": now(), "updated_at": now()}
+        kv_set("refs", [item] + lst[:29])
+    return item
+
+
+def update_ref(rid, data):
+    with _ref_lock:
+        lst = refs()
+        for r in lst:
+            if r["id"] == rid:
+                r.update({k: v for k, v in data.items() if k in ("state", "error", "channel", "result", "note")})
+                r["updated_at"] = now()
+                kv_set("refs", lst)
+                return r
+    return None
+
+
+def delete_ref(rid):
+    with _ref_lock:
+        kv_set("refs", [r for r in refs() if r["id"] != rid])
 
 
 def kv_get(k, default=None):
