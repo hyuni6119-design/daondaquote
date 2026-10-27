@@ -12,7 +12,7 @@ KST = timezone(timedelta(hours=9))
 _lock = threading.Lock()
 _conn = None
 
-JSON_FIELDS = ("steps", "step_notes", "thumb_lines", "tags")
+JSON_FIELDS = ("steps", "step_notes", "thumb_lines", "tags", "ai_titles")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS episodes (
@@ -85,7 +85,9 @@ def conn():
         _conn.executescript(UPLOAD_SCHEMA)
         _conn.executescript(CHANNEL_SCHEMA)
         load_channels(_conn)
-        for col in ("review TEXT DEFAULT ''", "publish_at TEXT DEFAULT ''"):  # 예전 DB에도 붙여 줌
+        for col in ("review TEXT DEFAULT ''", "publish_at TEXT DEFAULT ''",  # 예전 DB에도 붙여 줌
+                    "shop_tags INTEGER DEFAULT 0", "shop_checked_at TEXT DEFAULT ''",   # 쇼핑 태그 개수 · 마지막 확인
+                    "ai_state TEXT DEFAULT ''", "ai_titles TEXT DEFAULT '[]'", "ai_desc TEXT DEFAULT ''", "ai_note TEXT DEFAULT ''"):  # AI 제목·설명
             try:
                 _conn.execute("ALTER TABLE episodes ADD COLUMN " + col)
             except sqlite3.OperationalError:
@@ -117,9 +119,9 @@ def _decode(ep):
         return ep
     for f in JSON_FIELDS:
         try:
-            ep[f] = json.loads(ep.get(f) or ("[]" if f in ("thumb_lines", "tags") else "{}"))
+            ep[f] = json.loads(ep.get(f) or ("[]" if f in ("thumb_lines", "tags", "ai_titles") else "{}"))
         except ValueError:
-            ep[f] = [] if f in ("thumb_lines", "tags") else {}
+            ep[f] = [] if f in ("thumb_lines", "tags", "ai_titles") else {}
     ep["badge"] = badge(ep)
     ep["done_steps"] = sum(1 for s in config.STEPS if ep["steps"].get(s) == "완료")
     return ep
@@ -200,7 +202,8 @@ def create_episode(channel, ep, **fields):
 
 EDITABLE = {"date", "minutes", "songs_done", "songs_total", "steps", "step_notes", "title",
             "description", "thumb_lines", "tags", "thumb", "block", "note", "video_id",
-            "privacy", "views", "likes", "stats_at", "review", "publish_at"}
+            "privacy", "views", "likes", "stats_at", "review", "publish_at",
+            "shop_tags", "shop_checked_at", "ai_state", "ai_titles", "ai_desc", "ai_note"}
 
 
 def update_episode(eid, fields):
@@ -470,3 +473,52 @@ def update_channel(key, fields):
         q(f"UPDATE channels SET {', '.join(k + '=?' for k, _ in sets)} WHERE key=?", (*[v for _, v in sets], key))
     load_channels()
     return next((c for c in config.CHANNELS if c["key"] == key), None)
+
+
+# ---------------------------------------------------------------- 값 보관 (만들기 규칙 · 제목 규칙 · 서버 상태)
+# status 표를 열쇠-값으로 같이 씀: 'rules:A' · 'system'
+
+DEFAULT_RULES = {
+    "songs": 8,              # 서로 다른 곡 개수 (1바퀴)
+    "loops": 3,              # 1바퀴를 몇 번 이어 붙이나
+    "min_minutes": 75,       # 목표 길이 (분)
+    "max_minutes": 100,
+    "song_seconds": 250,     # 곡 하나 평균 길이 (예상 길이 계산용 · 약 4분 10초)
+    "publish_time": "21:00", # 공개 시각 (한국 시간)
+    "every_days": 2,         # 며칠마다 한 편
+    "privacy": "unlisted",   # 처음 올릴 때 (일부 공개 → 검토 → 승인하면 예약)
+    "title_rules": "",       # 제목 짓는 규칙 (AI가 따름)
+    "desc_rules": "",        # 설명 첫머리 규칙
+    "examples": "",          # 잘된 제목 예시 (한 줄에 하나)
+}
+
+
+def kv_get(k, default=None):
+    r = one("SELECT data FROM status WHERE k=?", (k,))
+    return json.loads(r["data"]) if r else default
+
+
+def kv_set(k, data):
+    q("INSERT INTO status (k, data) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET data=excluded.data",
+      (k, json.dumps(data, ensure_ascii=False)))
+    return data
+
+
+def rules(key):
+    return {**DEFAULT_RULES, **(kv_get("rules:" + key, {}) or {})}
+
+
+def set_rules(key, data):
+    cur = rules(key)
+    for k, v in data.items():
+        if k not in DEFAULT_RULES:
+            continue
+        if isinstance(DEFAULT_RULES[k], int):
+            try:
+                v = max(0, min(1000, int(v)))
+            except (TypeError, ValueError):
+                continue
+        else:
+            v = str(v)[:4000]
+        cur[k] = v
+    return kv_set("rules:" + key, cur)

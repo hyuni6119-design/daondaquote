@@ -128,6 +128,42 @@ async def patch_channel(key: str, request: Request, _=Depends(need_user)):
     return db.update_channel(key, {k: str(b.get(k) or "").strip()[:60] for k in ("name", "display", "color")})
 
 
+@app.get("/api/rules")
+def get_rules(_=Depends(need_user)):
+    """채널마다 만들기 규칙 · 제목 규칙"""
+    return {c["key"]: db.rules(c["key"]) for c in config.CHANNELS}
+
+
+@app.put("/api/rules/{key}")
+async def put_rules(key: str, request: Request, _=Depends(need_user)):
+    if not any(c["key"] == key for c in config.CHANNELS):
+        raise HTTPException(404)
+    r = db.set_rules(key, await request.json())
+    db.add_log(f"{_name(key)} 만들기 규칙을 바꿨습니다 (곡 {r['songs']}개 × {r['loops']}바퀴 · {r['min_minutes']}~{r['max_minutes']}분)")
+    return r
+
+
+@app.get("/api/system")
+def get_system(_=Depends(need_user)):
+    """서버 일꾼이 1분마다 적는 상태 (채널 연결 · 유튜브 사용량 · 저장 공간 · 마지막 실행)"""
+    return db.kv_get("system", {}) or {}
+
+
+@app.put("/api/system")
+async def put_system(request: Request, who=Depends(need_user)):
+    if who != "pc":
+        raise HTTPException(403)
+    return db.kv_set("system", await request.json())
+
+
+@app.post("/api/episodes/{eid}/ai")
+def ai_request(eid: int, _=Depends(need_user)):
+    """이 편의 제목 후보 3개 · 설명 첫머리를 AI에게 (서버 일꾼이 1분 안에 씀)"""
+    if not db.episode(eid):
+        raise HTTPException(404)
+    return db.update_episode(eid, {"ai_state": "요청", "ai_note": ""})
+
+
 @app.get("/api/meta")
 def meta(_=Depends(need_user)):
     return {"channels": config.CHANNELS, "steps": config.STEPS, "states": config.STEP_STATES,

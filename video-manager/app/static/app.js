@@ -4,7 +4,7 @@
   var META = null, EPS = [], QUEUE = [], STATUS = {};
   var view = { ch: "all", st: "all", mode: "list", month: null, open: null, tab: "details", sortAsc: false };
   try { var saved = JSON.parse(localStorage.getItem("vm-view") || "{}");
-    ["ch", "st", "mode"].forEach(function (k) { if (saved[k]) view[k] = saved[k]; });
+    ["ch", "st", "mode", "page"].forEach(function (k) { if (saved[k]) view[k] = saved[k]; });
     if (saved.v2 !== 1) view.mode = "list"; } catch (e) {} // 처음 한 번은 새 목록 보기로
 
   var BADGES = ["검토대기", "다시만들기", "고치는중", "제작중", "막힘", "완료", "예약됨", "공개됨", "비공개", "일부공개", "준비"];
@@ -46,7 +46,7 @@
     clearTimeout(toastT); toastT = setTimeout(function () { t.hidden = true; }, 3000);
   }
   function saveView() {
-    try { localStorage.setItem("vm-view", JSON.stringify({ ch: view.ch, st: view.st, mode: view.mode, v2: 1 })); } catch (e) {}
+    try { localStorage.setItem("vm-view", JSON.stringify({ ch: view.ch, st: view.st, mode: view.mode, page: view.page, v2: 1 })); } catch (e) {}
   }
   function chInfo(key) {
     return (META.channels.filter(function (c) { return c.key === key; })[0]) || { name: key, color: "#888" };
@@ -429,7 +429,7 @@
     } else if (e.review === "고치는중") {
       review = h("div", { class: "st-review redo" }, [h("b", { text: "✏️ 고치는 중" }), h("p", { class: "small", text: "영상은 그대로 두고, 체크한 것(썸네일·제목·설명)만 PC가 바꿔요. 다 되면 다시 검토 대기로 와요." })]);
     } else if (e.review === "승인") {
-      review = h("div", { class: "st-review ok" }, [h("b", { text: "✅ 승인함" }), h("p", { class: "small", text: "PC가 예약 공개로 바꿔요 (시켜 둔 일에서 진행 상황을 볼 수 있어요)." })]);
+      review = h("div", { class: "st-review ok" }, [h("b", { text: "✅ 승인함" }), h("p", { class: "small", text: "서버가 1분 안에 공개 날짜로 예약해요." })]);
     }
     var right = h("div", { class: "st-right" }, [
       review,
@@ -688,6 +688,7 @@
     if (view.open && $("detail").open) {
       if (!view.dirty) drawDetail();
     }
+    drawPage();
   }
 
   // ------------------------------------------------------------ 영상 올리기 (사이트에서 직접)
@@ -733,6 +734,7 @@
     return api("GET", "/api/uploads").then(function (list) {
       UPS = list;
       drawUploads();
+      if (view.page === "upload") drawPage();
       // 일꾼을 기다리는 게 있으면 5초마다 다시 봄
       clearTimeout(refreshUploads.t);
       if (UPS.some(function (u) { return u.state === "대기" || u.state === "올리는중" || u.draft === "요청"; })) refreshUploads.t = setTimeout(refreshUploads, 5000);
@@ -886,15 +888,257 @@
   // 창 전체 어디에 끌어다 놓아도 브라우저가 파일을 열지 않게
   ["dragover", "drop"].forEach(function (ev) { $("upDlg").addEventListener(ev, function (e) { if (e.target.type !== "file") e.preventDefault(); }); });
 
+  // ------------------------------------------------------------ 왼쪽 메뉴 화면들 (라이브 관리자처럼)
+  var RULES = {}, SYS = {}, LOGS = [];
+  var PAGE_NAME = { list: "영상 목록", upload: "영상 올리기", rules: "만들기 규칙", titles: "제목·설명", thumbs: "썸네일", shop: "쇼핑 태그", log: "실행 기록", settings: "설정·상태" };
+  view.page = view.page || "list";
+  function setPage(p) {
+    view.page = p; saveView();
+    Array.prototype.forEach.call(document.querySelectorAll("#sideNav .nav-item"), function (b) { b.classList.toggle("active", b.dataset.page === p); });
+    Array.prototype.forEach.call(document.querySelectorAll(".page"), function (el) { el.hidden = el.id !== "page-" + p; });
+    $("sidebar").classList.remove("open");
+    drawPage();
+    window.scrollTo(0, 0);
+  }
+  $("sideNav").addEventListener("click", function (ev) { var b = ev.target.closest(".nav-item"); if (b) setPage(b.dataset.page); });
+  function chList() { return META.channels.filter(function (c) { return view.ch === "all" || c.key === view.ch; }); }
+  function chEps() { return EPS.filter(function (e) { return view.ch === "all" || e.channel === view.ch; }); }
+  function head(title, sub, right) {
+    return h("div", { class: "page-head" }, [h("div", {}, [view.page === "titles" && title !== "제목·설명" ? h("h2", { text: title }) : null, sub ? h("p", { class: "muted small", text: sub }) : null]), right || null]);
+  }
+  function chTag2(key) { var c = chInfo(key); return h("span", { class: "ch", style: "background:" + c.color, text: c.display || c.name }); }
+
+  function drawPage() {
+    if (!META) return;
+    var cur = META.channels.filter(function (c) { return c.key === view.ch; })[0];
+    var chName = cur ? (cur.display || cur.name) : "전체 채널";
+    $("pageTitle").textContent = view.page === "list" ? chName : PAGE_NAME[view.page];
+    if (view.page !== "list") $("pageSub").textContent = chName + (view.ch === "all" ? "" : " 채널");
+    var fn = { upload: drawUploadPage, rules: drawRulesPage, titles: drawTitlesPage, thumbs: drawThumbsPage, shop: drawShopPage, log: drawLogPage, settings: drawSettingsPage }[view.page];
+    if (fn) fn($("page-" + view.page));
+  }
+
+  // ⬆ 영상 올리기 — 올린 것 · 올리는 중인 것 전부
+  function drawUploadPage(box) {
+    box.innerHTML = "";
+    box.appendChild(head("영상 올리기", "영상 파일을 넣으면 서버가 유튜브에 일부 공개로 올리고, 그 편이 🕵 검토할 영상에 떠요. 승인하면 공개 날짜에 예약돼요.",
+      h("button", { type: "button", class: "btn primary", onclick: function () { openUpload(null); } }, ["⬆ 새 영상 올리기"])));
+    var list = UPS.filter(function (u) { return view.ch === "all" || u.channel === view.ch; });
+    if (!list.length) { box.appendChild(h("div", { class: "card-box empty", text: "아직 올린 영상이 없어요" })); return; }
+    var wrapBox = h("div", { class: "card-box" });
+    list.forEach(function (u) {
+      var frac = u.state === "올리는중" || u.state === "올림" ? (u.progress || 0) / 100 : (u.size ? u.received / u.size : 0);
+      wrapBox.appendChild(h("div", { class: "up-row" + (u.state === "실패" ? " bad" : "") }, [
+        chTag2(u.channel),
+        h("div", { class: "up-main" }, [
+          h("b", { text: u.title || u.filename || "제목 없음" }),
+          h("div", { class: "muted small", text: (UP_STATE[u.state] || u.state) + " · " + dotDate(u.date) + " · " + gb(u.size) + (u.error ? " · " + u.error : "") }),
+          h("div", { class: "bar up-bar" }, [h("i", { "data-upbar": u.id, style: "width:" + Math.round(frac * 100) + "%" })])
+        ]),
+        u.youtube_id ? h("a", { class: "small", href: "https://youtu.be/" + u.youtube_id, target: "_blank", rel: "noopener", text: "유튜브" }) : h("span", { class: "small", "data-uptxt": u.id, text: Math.round(frac * 100) + "%" }),
+        h("button", { type: "button", class: "btn small", onclick: function () { openUpload(u.id); } }, ["열기"])
+      ]));
+    });
+    box.appendChild(wrapBox);
+  }
+
+  // ⚙ 만들기 규칙 — 곡 개수 · 반복 · 길이 · 공개 시각
+  function drawRulesPage(box) {
+    box.innerHTML = "";
+    box.appendChild(head("만들기 규칙", "채널마다 영상을 어떻게 만들지 정해요. 영상을 만들 때 이 값대로 만들어요 (바꾸면 다음 편부터)."));
+    chList().forEach(function (c) {
+      var r = RULES[c.key] || {};
+      var f = {};
+      var num = function (k, label, unit, min, max) {
+        f[k] = h("input", { type: "number", min: String(min), max: String(max), value: r[k] != null ? r[k] : "" });
+        return h("label", { class: "rule" }, [h("span", { text: label }), h("div", { class: "rule-in" }, [f[k], h("em", { text: unit })])]);
+      };
+      var est = h("div", { class: "rule-est" });
+      var calc = function () {
+        var mins = Math.round((+f.songs.value || 0) * (+f.song_seconds.value || 0) * (+f.loops.value || 0) / 60);
+        var lo = +f.min_minutes.value || 0, hi = +f.max_minutes.value || 0;
+        var ok = mins >= lo && (!hi || mins <= hi);
+        est.className = "rule-est " + (ok ? "ok" : "warn");
+        est.textContent = "예상 길이 약 " + Math.floor(mins / 60) + "시간 " + (mins % 60) + "분 (" + mins + "분) — " + (ok ? "목표 안에 들어가요" : "목표(" + lo + "~" + hi + "분)를 벗어나요");
+      };
+      f.publish_time = h("input", { type: "time", value: r.publish_time || "21:00" });
+      var card = h("div", { class: "card-box rules-card" }, [
+        h("div", { class: "row gap" }, [chTag2(c.key), h("b", { text: (c.display || c.name) + " 만들기 규칙" })]),
+        h("div", { class: "rules-grid" }, [
+          num("songs", "서로 다른 곡 개수", "곡", 1, 60),
+          num("loops", "반복 횟수 (바퀴)", "바퀴", 1, 10),
+          num("song_seconds", "곡 하나 평균 길이", "초", 60, 900),
+          num("min_minutes", "목표 길이 최소", "분", 1, 600),
+          num("max_minutes", "목표 길이 최대", "분", 1, 600),
+          num("every_days", "며칠마다 한 편", "일", 1, 30),
+          h("label", { class: "rule" }, [h("span", { text: "공개 시각 (한국)" }), h("div", { class: "rule-in" }, [f.publish_time])]),
+          h("label", { class: "rule" }, [h("span", { text: "처음 올릴 때" }), h("div", { class: "rule-in" }, [h("b", { text: "일부 공개 → 검토 → 승인하면 예약" })])])
+        ]),
+        est,
+        h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", onclick: function () {
+          var body = {}; Object.keys(f).forEach(function (k) { body[k] = f[k].value; });
+          api("PUT", "/api/rules/" + c.key, body).then(function (nr) { RULES[c.key] = nr; toast((c.display || c.name) + " 규칙을 저장했어요"); calc(); }).catch(function (err) { toast(err.message); });
+        } }, ["저장"])])
+      ]);
+      Object.keys(f).forEach(function (k) { f[k].addEventListener("input", calc); });
+      box.appendChild(card);
+      calc();
+    });
+  }
+
+  // ✍ 제목·설명 — 채널 규칙 + 편마다 AI로 만들기
+  function drawTitlesPage(box) {
+    if (box.contains(document.activeElement) && /TEXTAREA|INPUT/.test(document.activeElement.tagName)) return; // 쓰는 중에는 다시 그리지 않음
+    box.innerHTML = "";
+    box.appendChild(head("제목·설명", "채널마다 제목 규칙과 예시를 적어 두면, AI가 그 규칙대로 제목 후보 3개와 설명 첫머리를 만들어요. 고르면 유튜브에도 바로 반영돼요."));
+    chList().forEach(function (c) {
+      var r = RULES[c.key] || {};
+      var tr = h("textarea", { rows: "4", placeholder: "예) 이모지로 시작 · 날짜/시간 표현은 넣지 않기 · 끝은 “| 부처님 노래 | 키워드·키워드” 로" }); tr.value = r.title_rules || "";
+      var dr = h("textarea", { rows: "3", placeholder: "예) 첫 두 줄은 위로하는 말 · 기복신앙식 과장 금지" }); dr.value = r.desc_rules || "";
+      var ex = h("textarea", { rows: "4", placeholder: "잘된 제목 예시를 한 줄에 하나씩" }); ex.value = r.examples || "";
+      box.appendChild(h("details", { class: "card-box rules-card", open: view.ch !== "all" }, [
+        h("summary", {}, [chTag2(c.key), h("b", { text: " 제목·설명 규칙" })]),
+        h("label", { class: "stack" }, [h("span", { class: "small", text: "제목 규칙" }), tr]),
+        h("label", { class: "stack" }, [h("span", { class: "small", text: "설명 첫머리 규칙" }), dr]),
+        h("label", { class: "stack" }, [h("span", { class: "small", text: "잘된 제목 예시" }), ex]),
+        h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", onclick: function () {
+          api("PUT", "/api/rules/" + c.key, { title_rules: tr.value, desc_rules: dr.value, examples: ex.value }).then(function (nr) { RULES[c.key] = nr; toast("규칙을 저장했어요"); }).catch(function (err) { toast(err.message); });
+        } }, ["규칙 저장"])])
+      ]));
+    });
+    var list = chEps().slice().sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+    var tbl = h("div", { class: "card-box" });
+    list.forEach(function (e) {
+      var src = thumbSrc(e);
+      var cands = (e.ai_titles || []).map(function (t) {
+        return h("button", { type: "button", class: "chip", title: "이 제목으로 바꾸기", onclick: function () {
+          if (!confirm("제목을 이걸로 바꿀까요?" + (e.video_id ? "\n(유튜브에도 1분 안에 반영돼요)" : "") + "\n\n" + t)) return;
+          api("POST", "/api/episodes/" + e.id + "/edit", { title: t }).then(function () { toast("제목을 바꿨어요"); refresh(); }).catch(function (err) { toast(err.message); });
+        } }, [t]);
+      });
+      tbl.appendChild(h("div", { class: "ti-row" }, [
+        h("div", { class: "yt-thumb" }, [src ? h("img", { src: src, alt: "" }) : null]),
+        h("div", { class: "ti-main" }, [
+          h("div", {}, [chTag2(e.channel), " ", h("b", { text: e.ep + "편 · " + dotDate(e.date) })]),
+          h("div", { class: "ti-title", text: e.title || "제목 없음" }),
+          cands.length ? h("div", { class: "up-alts" }, [h("span", { class: "muted small", text: "AI 제목 후보 (누르면 바뀜)" })].concat(cands)) : null,
+          e.ai_desc ? h("details", { class: "ti-desc" }, [h("summary", { class: "small", text: "AI 설명 첫머리 보기" }), h("pre", { text: String(e.ai_desc).split("━")[0].trim() }),
+            h("button", { type: "button", class: "btn small", onclick: function () {
+              if (!confirm("설명을 AI 것으로 바꿀까요? (수록곡·끝맺음은 그대로)")) return;
+              api("POST", "/api/episodes/" + e.id + "/edit", { description: e.ai_desc }).then(function () { toast("설명을 바꿨어요"); refresh(); }).catch(function (err) { toast(err.message); });
+            } }, ["이 설명으로 바꾸기"])]) : null,
+          e.ai_state === "실패" ? h("span", { class: "small bad", text: "AI 실패: " + e.ai_note }) : null
+        ]),
+        h("button", { type: "button", class: "btn small", disabled: e.ai_state === "요청", onclick: function () {
+          api("POST", "/api/episodes/" + e.id + "/ai").then(function () { toast("AI가 쓰는 중이에요 (1분쯤)"); refresh(); }).catch(function (err) { toast(err.message); });
+        } }, [e.ai_state === "요청" ? "✨ 쓰는 중…" : "✨ AI로 만들기"])
+      ]));
+    });
+    box.appendChild(head("편마다 제목", list.length + "편"));
+    box.appendChild(tbl);
+  }
+
+  // 🖼 썸네일 — 16:9 그대로 모아 보기
+  function drawThumbsPage(box) {
+    box.innerHTML = "";
+    box.appendChild(head("썸네일", "편마다 썸네일을 16:9 그대로 봐요. 누르면 세부정보에서 문구·그림을 바꿀 수 있어요."));
+    var grid = h("div", { class: "th-grid" });
+    chEps().slice().sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); }).forEach(function (e) {
+      var src = thumbSrc(e);
+      grid.appendChild(h("button", { type: "button", class: "th-card", onclick: function () { openDetail(e.id); } }, [
+        h("div", { class: "yt-thumb th-img" }, [src ? h("img", { src: src, alt: "" }) : h("span", { class: "muted small", text: "썸네일 없음" })]),
+        h("div", { class: "th-cap" }, [chTag2(e.channel), h("b", { text: " " + e.ep + "편 · " + dotDate(e.date) }), h("span", { class: "badge " + e.badge, text: e.badge })])
+      ]));
+    });
+    box.appendChild(grid);
+  }
+
+  // 🛍 쇼핑 태그 — 편마다 붙었는지
+  function drawShopPage(box) {
+    box.innerHTML = "";
+    var list = chEps().filter(function (e) { return e.video_id; }).sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+    var done = list.filter(function (e) { return (e.shop_tags || 0) >= 4; }).length;
+    box.appendChild(head("쇼핑 태그", "유튜브 API로는 못 붙여서, PC 웨일 예약 작업이 매일 21:20 · 00:20에 붙이고 다시 열어 확인한 뒤 여기에 적어요 (PC가 켜져 있어야 해요). 라이브 쇼핑 태그도 같은 작업이 붙여요.",
+      h("div", { class: "shop-sum" }, [h("b", { text: done + " / " + list.length }), h("span", { class: "muted small", text: "편 확인됨" })])));
+    var tbl = h("div", { class: "card-box" });
+    list.forEach(function (e) {
+      var ok = (e.shop_tags || 0) >= 4;
+      tbl.appendChild(h("div", { class: "shop-row" }, [
+        h("div", { class: "yt-thumb" }, [thumbSrc(e) ? h("img", { src: thumbSrc(e), alt: "" }) : null]),
+        h("div", { class: "ti-main" }, [h("div", {}, [chTag2(e.channel), " ", h("b", { text: e.ep + "편 · " + dotDate(e.date) })]), h("div", { class: "ti-title", text: e.title || "" })]),
+        h("span", { class: "shop-st " + (ok ? "ok" : "wait"), text: ok ? "✅ 4개 붙음" : "⏳ 아직" }),
+        h("span", { class: "muted small", text: e.shop_checked_at ? "확인 " + String(e.shop_checked_at).slice(5, 16).replace("T", " ") : "확인 전" }),
+        h("a", { class: "btn small", href: "https://studio.youtube.com/video/" + e.video_id + "/edit" + (chInfo(e.channel).name === "황금주파수" ? "?authuser=1" : ""), target: "_blank", rel: "noopener", text: "스튜디오" })
+      ]));
+    });
+    if (!list.length) tbl.appendChild(h("p", { class: "muted", text: "유튜브에 올라간 편이 없어요" }));
+    box.appendChild(tbl);
+  }
+
+  // 🕘 실행 기록
+  function drawLogPage(box) {
+    box.innerHTML = "";
+    box.appendChild(head("실행 기록", "사이트·서버·PC가 한 일 (최근 " + LOGS.length + "개)"));
+    var ol = h("ol", { class: "card-box log-list" });
+    LOGS.forEach(function (r) {
+      var d = new Date(r.at);
+      ol.appendChild(h("li", {}, [h("span", { class: "muted small", text: (d.getMonth() + 1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") }), h("span", { text: r.text })]));
+    });
+    box.appendChild(ol);
+  }
+
+  // 🔧 설정·상태
+  function drawSettingsPage(box) {
+    box.innerHTML = "";
+    var at = SYS.at ? new Date(SYS.at) : null;
+    var fresh = at && Date.now() - at.getTime() < 5 * 60e3;
+    box.appendChild(head("설정·상태", "서버 일꾼(1분마다)이 적는 상태예요."));
+    box.appendChild(h("div", { class: "set-grid" }, [
+      h("div", { class: "card-box" }, [h("b", { text: "서버 일꾼" }), h("div", { class: "set-big " + (fresh ? "ok" : "warn"), text: fresh ? "● 돌고 있어요" : "● 응답 없음" }),
+        h("span", { class: "muted small", text: at ? "마지막 " + at.toLocaleString("ko-KR") : "아직 기록 없음" }),
+        h("span", { class: "muted small", text: "유튜브로 보낼 차례인 영상 " + (SYS.waiting || 0) + "개" })]),
+      h("div", { class: "card-box" }, [h("b", { text: "서버 저장 공간" }), h("div", { class: "set-big", text: (SYS.freeGB != null ? SYS.freeGB : "—") + "GB 남음" }),
+        h("div", { class: "bar" }, [h("i", { style: "width:" + (SYS.totalGB ? Math.round((1 - SYS.freeGB / SYS.totalGB) * 100) : 0) + "%" })]),
+        h("span", { class: "muted small", text: "영상 파일은 유튜브에 올린 뒤 지워요" })])
+    ]));
+    var chBox = h("div", { class: "card-box" }, [h("div", { class: "row gap" }, [h("b", { text: "채널 연결 · 오늘 유튜브 사용량" }), h("span", { class: "spacer" }),
+      h("button", { type: "button", class: "btn small", onclick: function () { openChannelDialog(null); } }, ["＋ 채널 넣기"])])]);
+    META.channels.forEach(function (c) {
+      var s = (SYS.channels || []).filter(function (x) { return x.key === c.key; })[0] || {};
+      var q = s.quota || 0;
+      chBox.appendChild(h("div", { class: "set-ch" }, [
+        chTag2(c.key),
+        h("span", { class: "small " + (s.linked && !s.error ? "set-ok" : "set-bad"), text: s.linked ? (s.error ? "⚠ " + s.error : "✅ 구글 연결됨 (라이브 관리자)") : "⚠ 라이브 관리자에 같은 이름 채널이 없거나 연결 안 됨" }),
+        h("div", { class: "bar set-q" }, [h("i", { style: "width:" + Math.min(100, Math.round(q / 100)) + "%" })]),
+        h("span", { class: "small", text: q.toLocaleString() + " / 10,000" }),
+        h("button", { type: "button", class: "btn small", onclick: function () { openChannelDialog(c); } }, ["✎"])
+      ]));
+    });
+    chBox.appendChild(h("p", { class: "muted small", text: "새 채널은 라이브 관리자에 먼저 넣고 구글 연결을 한 뒤, 여기 ‘채널 넣기’에 똑같은 이름으로 넣으면 조회수·올리기가 그 채널로 돼요. 사용량이 8,500을 넘으면 라이브 채팅만 쉬어요." }));
+    box.appendChild(chBox);
+  }
+
+  function refreshExtra() {
+    return Promise.all([api("GET", "/api/rules"), api("GET", "/api/system")]).then(function (r) {
+      RULES = r[0]; SYS = r[1];
+      if (view.page !== "list") drawPage();
+      // AI 를 기다리는 편이 있으면 5초 뒤 다시
+      clearTimeout(refreshExtra.t);
+      if (EPS.some(function (e) { return e.ai_state === "요청"; })) refreshExtra.t = setTimeout(function () { refresh(); }, 5000);
+    }).catch(function () { /* 다음에 */ });
+  }
+
   function refresh() {
     return Promise.all([api("GET", "/api/episodes"), api("GET", "/api/queue"), api("GET", "/api/status"), api("GET", "/api/log")])
-      .then(function (r) { EPS = r[0]; QUEUE = r[1]; STATUS = r[2]; drawAll(); drawLog(r[3]); refreshUploads(); })
+      .then(function (r) { EPS = r[0]; QUEUE = r[1]; STATUS = r[2]; LOGS = r[3]; drawAll(); drawLog(r[3]); refreshUploads(); refreshExtra(); })
       .catch(function (err) { if (err.message !== "login") toast("불러오지 못했습니다: " + err.message); });
   }
 
   api("GET", "/api/meta").then(function (m) {
     META = m;
     $("btnStats").hidden = !m.youtube_stats;
+    if (!PAGE_NAME[view.page]) view.page = "list";
+    setPage(view.page);
     refresh();
     setInterval(function () { if (!document.hidden) refresh(); }, 30000);
   });
