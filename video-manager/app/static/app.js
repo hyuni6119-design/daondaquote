@@ -7,7 +7,16 @@
   var TOOL_SUB = { refs: "레퍼런스 채널을 분석해서 프롬프트를 만들어요 (채널과 따로)", lyrics: "참고 가사로 수노에 넣을 새 가사를 만들어요 (채널과 따로)",
     saved: "저장해 둔 레퍼런스 채널 — 채널마다 골라 써요", log: "사이트·서버·PC가 한 일", settings: "서버 일꾼 · 저장 공간 · 채널 연결" };
   var OLD_PAGE = { upload: "make", titles: "make", rules: "chset", prompts: "chset", thumbs: "list", shop: "list", lyrics: "chset" }; // 예전 메뉴 → 새 메뉴
-  var UP_PRESET = null; // 🎬 새 영상 만들기에서 올리기 창을 열 때 채널·날짜 미리 채움
+  var UP_PRESET = null;
+  // 🖼 썸네일 그림 AI 모델 — 한 장 대략 값 (원 · 16:9 가로)
+  var IMG_MODELS = [
+    { id: "gpt-image-1-mini", name: "GPT 미니 (가장 저렴)", won: { low: 9, medium: 22, high: 75 } },
+    { id: "gpt-image-1", name: "GPT 이미지 1 (글씨 더 정확)", won: { low: 23, medium: 91, high: 363 } },
+    { id: "gemini-2.5-flash-image", name: "Gemini 플래시 이미지", won: { any: 57 }, note: "구글 결제(빌링)를 켜야 써져요" },
+    { id: "gemini-3-pro-image", name: "Gemini 3 프로 이미지 (고급)", won: { any: 195 }, note: "구글 결제(빌링)를 켜야 써져요" }
+  ];
+  function imgWon(id, q) { var m = IMG_MODELS.filter(function (x) { return x.id === id; })[0]; return m ? (m.won[q] || m.won.any || 0) : 0; }
+  function imgLabel(m) { return m.name + " · " + (m.won.any ? "약 " + m.won.any + "원" : "약 " + m.won.low + "~" + m.won.high + "원 (품질 따라)") + (m.note ? " · " + m.note : ""); } // 🎬 새 영상 만들기에서 올리기 창을 열 때 채널·날짜 미리 채움
   var view = { ch: "all", st: "all", mode: "list", month: null, open: null, tab: "details", sortAsc: false };
   try { var saved = JSON.parse(localStorage.getItem("vm-view") || "{}");
     ["ch", "st", "mode", "page"].forEach(function (k) { if (saved[k]) view[k] = saved[k]; });
@@ -1049,8 +1058,8 @@
         h("div", { class: "rules-grid" }, [
           h("label", { class: "rule" }, [h("span", { text: "다음 편 알아서 시작" }), h("div", { class: "rule-in" }, [f.auto_make = sel([["1", "켜기 — 서버가 알아서 시작"], ["0", "끄기 — 내가 눌러서 시작"]], String(r.auto_make != null ? r.auto_make : 1))])]),
           num("lead_days", "공개 며칠 전에 시작", "일 전", 1, 30),
-          h("label", { class: "rule" }, [h("span", { text: "썸네일 그림 AI (유료)" }), h("div", { class: "rule-in" }, [f.thumb_ai = sel([["", "끄기 — 프롬프트만 (무료)"], ["gpt-image-1-mini", "가장 저렴 (mini) · 한 장 약 20원"], ["gpt-image-1", "좋은 것 · 한 장 약 90원"]], r.thumb_ai || "")])]),
-          h("label", { class: "rule" }, [h("span", { text: "그림 품질" }), h("div", { class: "rule-in" }, [f.thumb_quality = sel([["low", "낮음 (가장 쌈)"], ["medium", "보통"], ["high", "높음 (비쌈)"]], r.thumb_quality || "medium")])])
+          h("label", { class: "rule" }, [h("span", { text: "썸네일 그림 AI (유료)" }), h("div", { class: "rule-in" }, [f.thumb_ai = sel([["", "끄기 — 프롬프트만 (무료) · 그림은 「그림 만들기」로"]].concat(IMG_MODELS.map(function (m) { return [m.id, "자동: " + imgLabel(m)]; })), r.thumb_ai || "")])]),
+          h("label", { class: "rule" }, [h("span", { text: "그림 품질 (GPT만)" }), h("div", { class: "rule-in" }, [f.thumb_quality = sel([["low", "낮음 (가장 쌈)"], ["medium", "보통 (추천)"], ["high", "높음 (비쌈)"]], r.thumb_quality || "medium")])])
         ]),
         est,
         h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", onclick: function () {
@@ -1325,7 +1334,7 @@
   }
 
   // 🎬 새 영상 만들기 — 한 편을 1~6단계 순서대로
-  var MK_TOPIC = {};
+  var MK_TOPIC = {}, MK_IMG = {};
   function addDays(d, n) { var x = new Date(d + "T00:00:00"); x.setDate(x.getDate() + n); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0"); }
   function drawMakePage(box) {
     if (box.contains(document.activeElement) && /TEXTAREA|INPUT|SELECT/.test(document.activeElement.tagName)) return;
@@ -1406,14 +1415,30 @@
           api("POST", "/api/episodes/" + e.id + "/thumbnail", fd).then(function () { toast("썸네일을 넣었어요"); refresh(); }).catch(function (err) { toast(err.message); });
         } });
         return [
-          h("span", { class: "muted small", text: "① 「프롬프트 만들기」 → ② 📋 복사해서 ChatGPT·Gemini에 붙여 넣기 → ③ 나온 그림을 여기에 넣기" }),
+          h("span", { class: "muted small", text: "「🖼 그림 만들기」를 누르면 AI가 그림+글씨까지 만들어 바로 넣어요. 직접 뽑고 싶으면 프롬프트를 복사해서 ChatGPT에 붙여 넣고 「📁 내 그림 넣기」." }),
           h("div", { class: "row gap" }, [h("button", { type: "button", class: "btn primary", disabled: busy("thumb"), onclick: function () { save({ job: "thumb" }, "썸네일 프롬프트를 만드는 중이에요 (1분쯤)"); } },
             [busy("thumb") ? "만드는 중…" : mk.thumb_prompt ? "🔁 다시 만들기" : "✨ 썸네일 프롬프트 만들기"]), rl.thumb_prompt ? null : h("span", { class: "muted small", text: "채널 설정에 썸네일 프롬프트가 없어서 기본 분위기로 만들어요" })]),
           jobErr("thumb"),
           mk.thumb_text ? h("div", { class: "sample-thumb", text: mk.thumb_text }) : null,
           mk.thumb_prompt ? h("details", { class: "ti-desc", open: true }, [h("summary", { class: "small", text: "썸네일 프롬프트 (그림 AI에 그대로 붙여 넣기)" }), copyBtn(mk.thumb_prompt), h("pre", { text: mk.thumb_prompt })]) : null,
+          (function () {
+            var ij = jobs.image || {}, ib = ij.state === "요청" || ij.state === "만드는중";
+            var msel = h("select", { class: "ref-url", onchange: function () { MK_IMG.model = msel.value; price(); } }, IMG_MODELS.map(function (m) { return h("option", { value: m.id, text: imgLabel(m) }); }));
+            var qsel = h("select", { class: "ref-url", onchange: function () { MK_IMG.quality = qsel.value; price(); } }, [["low", "품질 낮음"], ["medium", "품질 보통"], ["high", "품질 높음"]].map(function (o) { return h("option", { value: o[0], text: o[1] }); }));
+            msel.value = MK_IMG.model || rl.thumb_ai || "gpt-image-1-mini"; qsel.value = MK_IMG.quality || rl.thumb_quality || "medium";
+            var go = h("button", { type: "button", class: "btn primary", disabled: ib || !mk.thumb_prompt, onclick: function () {
+              if (!confirm(msel.options[msel.selectedIndex].text + "\n이 모델로 썸네일 그림을 만들까요? (약 " + imgWon(msel.value, qsel.value) + "원)")) return;
+              save({ job: "image", model: msel.value, quality: qsel.value }, "그림을 만드는 중이에요 (1~2분)");
+            } });
+            var price = function () { qsel.hidden = /^gemini/.test(msel.value); go.textContent = ib ? "그리는 중…" : "🖼 그림 만들기 · 약 " + imgWon(msel.value, qsel.value) + "원"; };
+            price();
+            return h("div", { class: "mk-img" }, [h("b", { class: "small", text: "AI로 그림까지 만들기 (유료)" }), h("div", { class: "row gap" }, [msel, qsel, go]),
+              ij.state === "실패" ? h("span", { class: "small set-bad", text: "그림 실패: " + ij.error }) : null,
+              ij.state === "완료" ? h("span", { class: "muted small", text: "마지막 그림: " + ij.model + " · 약 " + (ij.won || imgWon(ij.model, ij.quality)) + "원" }) : null,
+              !mk.thumb_prompt ? h("span", { class: "muted small", text: "먼저 썸네일 프롬프트를 만들어 주세요" }) : null]);
+          })(),
           h("div", { class: "mk-thumb" }, [h("div", { class: "yt-thumb" }, [thumbSrc(e) ? h("img", { src: thumbSrc(e), alt: "" }) : h("span", { class: "muted small", text: "아직 썸네일 없음" })]),
-            h("label", { class: "btn" }, ["🖼 썸네일 그림 넣기", file])])
+            h("label", { class: "btn" }, ["📁 내 그림 넣기", file])])
         ];
       },
       title: function () {

@@ -351,6 +351,9 @@ async def make_update(eid: int, request: Request, _=Depends(need_user)):
         mk["song_done"] = {**(mk.get("song_done") or {}), **{str(k)[:5]: bool(v) for k, v in b["song_done"].items()}}
     if b.get("job") in ("thumb", "songs"):
         mk.setdefault("jobs", {})[b["job"]] = {"state": "요청", "error": ""}
+    if b.get("job") == "image":  # 🖼 썸네일 그림 AI (고른 모델 · 유료)
+        mk.setdefault("jobs", {})["image"] = {"state": "요청", "error": "", "model": str(b.get("model") or "gpt-image-1-mini")[:40],
+                                            "quality": b.get("quality") if b.get("quality") in ("low", "medium", "high") else "medium"}
     if b.get("job") == "all":  # ✨ 한 번에 다 만들기: 주제 → 썸네일 → 곡 목록 → 제목·설명 → 가사
         mk.setdefault("jobs", {})["all"] = {"state": "요청", "error": "", "stage": "topic", "keep_topic": bool(mk.get("topic"))}
     return db.update_episode(eid, {"make": mk})
