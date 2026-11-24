@@ -22,10 +22,10 @@ pyinstaller --onefile --noconsole capture.py
 ```
 `dist\capture.exe`가 생성됩니다.
 
-## exe 내려받기 (Python 설치 불필요)
-1. GitHub 저장소 → **Actions** 탭 → **Build capture.exe**
-2. 가장 최근 성공(✅) 실행 클릭 → 아래 **Artifacts**의 `capture-exe` 다운로드
-3. 압축을 풀면 나오는 `capture.exe`를 더블클릭해서 실행
+## exe 내려받기 (Python 설치 불필요, 로그인 불필요)
+아래 링크를 누르면 바로 `capture.exe`가 다운로드됩니다.
+
+https://github.com/hyuni6119-design/daondaquote/releases/download/capture-latest/capture.exe
 
 수동으로 다시 빌드하려면 Actions 탭에서 **Run workflow** 버튼을 누르면 됩니다.
 

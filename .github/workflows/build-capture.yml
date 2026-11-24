@@ -7,6 +7,9 @@ on:
       - ".github/workflows/build-capture.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -40,3 +43,15 @@ jobs:
           name: capture-exe
           path: capture/dist/capture.exe
           retention-days: 90
+
+      - name: Publish to release (로그인 없이 받는 고정 링크)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view capture-latest *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload capture-latest capture/dist/capture.exe --clobber
+          } else {
+            gh release create capture-latest capture/dist/capture.exe --target "${{ github.sha }}" --title "캡처 프로그램 (최신)" --notes "capture.exe 를 받아서 더블클릭하면 실행됩니다."
+          }
