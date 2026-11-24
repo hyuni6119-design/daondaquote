@@ -10,7 +10,9 @@ import io
 import os
 import platform
 import subprocess
+import queue
 import sys
+import threading
 import tkinter as tk
 from datetime import datetime
 from tkinter import filedialog, messagebox
@@ -53,6 +55,30 @@ def looks_blocked(img):
     """화면 전체가 검정이면 보안 프로그램이 캡처를 막은 경우가 많음."""
     small = img.convert("L").resize((64, 64))
     return small.getextrema()[1] < 8
+
+
+class GlobalHotkeys(threading.Thread):
+    """Windows 전역 단축키: 다른 프로그램을 쓰는 중에도 PrtSc가 동작하게 함."""
+    WM_HOTKEY, MOD_CONTROL, MOD_NOREPEAT, VK_SNAPSHOT = 0x0312, 0x0002, 0x4000, 0x2C
+    KEYS = {1: (0, "region"), 2: (MOD_CONTROL, "full")}  # PrtSc / Ctrl+PrtSc
+
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.events = queue.Queue()
+        self.ready = threading.Event()
+        self.failed = []
+
+    def run(self):
+        from ctypes import wintypes
+        u32 = ctypes.windll.user32
+        for hid, (mod, mode) in self.KEYS.items():
+            if not u32.RegisterHotKey(None, hid, mod | self.MOD_NOREPEAT, self.VK_SNAPSHOT):
+                self.failed.append(mode)
+        self.ready.set()
+        msg = wintypes.MSG()
+        while u32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+            if msg.message == self.WM_HOTKEY and msg.wParam in self.KEYS:
+                self.events.put(self.KEYS[msg.wParam][1])
 
 
 def virtual_screen():
@@ -124,7 +150,7 @@ class RegionSelector(tk.Toplevel):
         self.cv.create_image(0, 0, anchor="nw", image=self.bg)
         self.cv.create_text(w // 2, 30, fill="white",
                             font=("맑은 고딕", 14, "bold"),
-                            text="드래그해서 영역 선택 · ESC 취소")
+                            text="드래그해서 영역 선택 · ESC/우클릭 취소")
         self.start = None
         self.rect = self.label = self.crop_img = None
 
@@ -132,6 +158,7 @@ class RegionSelector(tk.Toplevel):
         self.cv.bind("<B1-Motion>", self.drag)
         self.cv.bind("<ButtonRelease-1>", self.release)
         self.bind("<Escape>", lambda e: self.finish(None))
+        self.cv.bind("<ButtonPress-3>", lambda e: self.finish(None))
         self.after(50, self.focus_force)
 
     def press(self, e):
@@ -248,6 +275,26 @@ class App(tk.Tk):
         self.delay = tk.Spinbox(opt, from_=0, to=10, width=4)
         self.delay.pack(side="left", padx=4)
         tk.Button(opt, text="저장 폴더 열기", command=self.open_folder).pack(side="left", padx=8)
+        self.autosave = tk.BooleanVar(value=True)
+        tk.Checkbutton(f, variable=self.autosave,
+                       text="자동 저장 (미리보기 없이 바로 저장 + 클립보드 복사)").grid(
+            row=3, column=0, columnspan=2, sticky="w")
+        self.status = tk.Label(f, fg="#0a6", anchor="w", justify="left")
+        self.status.grid(row=4, column=0, columnspan=2, sticky="w")
+        self.busy = False
+        self.hotkeys = None
+        if IS_WIN:
+            self.hotkeys = GlobalHotkeys()
+            self.hotkeys.start()
+            self.hotkeys.ready.wait(2)
+            if self.hotkeys.failed:
+                self.status.config(fg="#c00", text=(
+                    "PrtSc 단축키를 등록하지 못했습니다. 다른 프로그램이 PrtSc를 쓰고 있어요.\n"
+                    "(Windows 설정 > 접근성 > 키보드 > 'PrtSc 단추로 화면 캡처 열기' 끄기,\n"
+                    " OneDrive·카톡·알캡처 등의 캡처 단축키 끄기 후 이 프로그램을 다시 켜세요)"))
+            else:
+                self.status.config(text="PrtSc = 영역 캡처 · Ctrl+PrtSc = 전체 화면 (창을 최소화해도 동작)")
+            self.after(100, self.poll_hotkeys)
 
         self.report_callback_exception = self.on_error
         tk.Label(f, fg="#777", text="단축키: F1 전체 · F2 영역 (이 창이 선택된 상태)").grid(
@@ -255,10 +302,26 @@ class App(tk.Tk):
         self.bind("<F1>", lambda e: self.start("full"))
         self.bind("<F2>", lambda e: self.start("region"))
 
-    def start(self, mode):
+    def poll_hotkeys(self):
+        try:
+            while True:
+                mode = self.hotkeys.events.get_nowait()
+                if not self.busy:
+                    self.start(mode, use_delay=False)
+        except queue.Empty:
+            pass
+        self.after(100, self.poll_hotkeys)
+
+    def start(self, mode, use_delay=True):
+        if self.busy:
+            return
+        self.busy = True
+        self.was_iconic = self.state() == "iconic"
         try:
             sec = max(0, min(10, int(self.delay.get())))
         except ValueError:
+            sec = 0
+        if not use_delay:
             sec = 0
         self.withdraw()  # 캡처에 이 창이 찍히지 않도록 숨김
         self.after(sec * 1000 + 250, lambda: self.capture(mode))
@@ -267,7 +330,7 @@ class App(tk.Tk):
         try:
             shot = grab_all()
         except Exception as ex:
-            self.deiconify()
+            self.restore()
             messagebox.showerror("캡처 실패", str(ex))
             return
         if looks_blocked(shot):
@@ -282,15 +345,49 @@ class App(tk.Tk):
         else:
             RegionSelector(self, shot, self.done)
 
+    def restore(self):
+        self.busy = False
+        if self.was_iconic:
+            self.iconify()
+        else:
+            self.deiconify()
+
     def done(self, img):
-        self.deiconify()
-        if img is not None:
+        self.restore()
+        if img is None:
+            return
+        if not self.autosave.get():
             Preview(self, img)
+            return
+        os.makedirs(SAVE_DIR, exist_ok=True)
+        path = os.path.join(SAVE_DIR, Preview.default_name())
+        img.save(path)
+        copied = ""
+        try:
+            copy_to_clipboard(img)
+            copied = " + 클립보드 복사"
+        except Exception:
+            pass
+        self.status.config(fg="#0a6", text=f"저장됨{copied}: {path}")
+        self.toast(f"저장됨{copied}\n{os.path.basename(path)}")
+
+    def toast(self, text):
+        t = tk.Toplevel(self)
+        t.overrideredirect(True)
+        t.attributes("-topmost", True)
+        tk.Label(t, text=text, bg="#222", fg="white", padx=14, pady=10,
+                 justify="left").pack()
+        t.update_idletasks()
+        x = self.winfo_screenwidth() - t.winfo_width() - 20
+        y = self.winfo_screenheight() - t.winfo_height() - 70
+        t.geometry(f"+{x}+{y}")
+        t.after(2000, t.destroy)
 
     def on_error(self, exc, val, tb):
         import traceback
         text = "".join(traceback.format_exception(exc, val, tb))
         log_error(text)
+        self.busy = False
         self.deiconify()
         messagebox.showerror("오류", f"{val}\n\n로그: {LOG_PATH}")
 
