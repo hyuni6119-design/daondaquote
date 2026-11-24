@@ -24,6 +24,17 @@ jobs:
         working-directory: capture
         run: pyinstaller --onefile --noconsole --name capture capture.py
 
+      - name: Smoke test (exe가 켜지고 살아있는지)
+        shell: pwsh
+        run: |
+          $p = Start-Process capture/dist/capture.exe -PassThru
+          Start-Sleep -Seconds 15
+          if ($p.HasExited) { Write-Error "capture.exe exited early (code $($p.ExitCode))"; exit 1 }
+          $w = (Get-Process -Id $p.Id).MainWindowTitle
+          Write-Host "running, window title: '$w'"
+          Stop-Process -Id $p.Id -Force
+          Get-Process capture -ErrorAction SilentlyContinue | Stop-Process -Force
+
       - uses: actions/upload-artifact@v4
         with:
           name: capture-exe

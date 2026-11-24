@@ -18,6 +18,8 @@ from tkinter import filedialog, messagebox
 from PIL import Image, ImageGrab, ImageTk
 
 IS_WIN = platform.system() == "Windows"
+LOG_PATH = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"),
+                        "capture_error.log")
 SAVE_DIR = os.path.join(os.path.expanduser("~"), "Pictures", "Captures")
 
 if IS_WIN:
@@ -28,6 +30,29 @@ if IS_WIN:
             ctypes.windll.user32.SetProcessDPIAware()
         except Exception:
             pass
+
+
+def log_error(text):
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now():%Y-%m-%d %H:%M:%S}]\n{text}\n")
+    except Exception:
+        pass
+
+
+def show_fatal(text):
+    """Tk 없이도 뜨는 오류 창 (exe에서 조용히 꺼지는 것 방지)."""
+    msg = f"{text}\n\n로그: {LOG_PATH}"
+    if IS_WIN:
+        ctypes.windll.user32.MessageBoxW(None, msg, "캡처 프로그램 오류", 0x10)
+    else:
+        print(msg, file=sys.stderr)
+
+
+def looks_blocked(img):
+    """화면 전체가 검정이면 보안 프로그램이 캡처를 막은 경우가 많음."""
+    small = img.convert("L").resize((64, 64))
+    return small.getextrema()[1] < 8
 
 
 def virtual_screen():
@@ -157,9 +182,9 @@ class Preview(tk.Toplevel):
 
         bar = tk.Frame(self, pady=6)
         bar.pack(fill="x")
-        tk.Button(bar, text="💾 저장 (Ctrl+S)", command=self.save).pack(side="left", padx=4)
-        tk.Button(bar, text="⚡ 빠른 저장", command=self.quick_save).pack(side="left", padx=4)
-        tk.Button(bar, text="📋 복사 (Ctrl+C)", command=self.copy).pack(side="left", padx=4)
+        tk.Button(bar, text="저장 (Ctrl+S)", command=self.save).pack(side="left", padx=4)
+        tk.Button(bar, text="빠른 저장", command=self.quick_save).pack(side="left", padx=4)
+        tk.Button(bar, text="복사 (Ctrl+C)", command=self.copy).pack(side="left", padx=4)
         tk.Button(bar, text="닫기", command=self.destroy).pack(side="right", padx=4)
 
         maxw = int(self.winfo_screenwidth() * 0.8)
@@ -212,9 +237,9 @@ class App(tk.Tk):
 
         f = tk.Frame(self, padx=12, pady=10)
         f.pack()
-        tk.Button(f, text="🖥  전체 화면", width=14, height=2,
+        tk.Button(f, text="전체 화면 (F1)", width=14, height=2,
                   command=lambda: self.start("full")).grid(row=0, column=0, padx=4)
-        tk.Button(f, text="✂  영역 선택", width=14, height=2,
+        tk.Button(f, text="영역 선택 (F2)", width=14, height=2,
                   command=lambda: self.start("region")).grid(row=0, column=1, padx=4)
 
         opt = tk.Frame(f, pady=8)
@@ -222,8 +247,9 @@ class App(tk.Tk):
         tk.Label(opt, text="지연(초):").pack(side="left")
         self.delay = tk.Spinbox(opt, from_=0, to=10, width=4)
         self.delay.pack(side="left", padx=4)
-        tk.Button(opt, text="📁 저장 폴더", command=self.open_folder).pack(side="left", padx=8)
+        tk.Button(opt, text="저장 폴더 열기", command=self.open_folder).pack(side="left", padx=8)
 
+        self.report_callback_exception = self.on_error
         tk.Label(f, fg="#777", text="단축키: F1 전체 · F2 영역 (이 창이 선택된 상태)").grid(
             row=2, column=0, columnspan=2)
         self.bind("<F1>", lambda e: self.start("full"))
@@ -244,6 +270,13 @@ class App(tk.Tk):
             self.deiconify()
             messagebox.showerror("캡처 실패", str(ex))
             return
+        if looks_blocked(shot):
+            log_error("captured image is all black (blocked?)")
+            messagebox.showwarning(
+                "캡처가 검게 나옴",
+                "캡처 결과가 전부 검은색입니다.\n\n"
+                "회사 보안 프로그램(DRM·화면 캡처 방지)이나 보안 문서/사이트가\n"
+                "열려 있으면 이렇게 막힐 수 있습니다. 해당 창을 닫고 다시 시도해 보세요.")
         if mode == "full":
             self.done(shot)
         else:
@@ -253,6 +286,13 @@ class App(tk.Tk):
         self.deiconify()
         if img is not None:
             Preview(self, img)
+
+    def on_error(self, exc, val, tb):
+        import traceback
+        text = "".join(traceback.format_exception(exc, val, tb))
+        log_error(text)
+        self.deiconify()
+        messagebox.showerror("오류", f"{val}\n\n로그: {LOG_PATH}")
 
     def open_folder(self):
         os.makedirs(SAVE_DIR, exist_ok=True)
@@ -265,4 +305,9 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
-    App().mainloop()
+    try:
+        App().mainloop()
+    except Exception:
+        import traceback
+        log_error(traceback.format_exc())
+        show_fatal("프로그램을 시작하지 못했습니다.\n" + traceback.format_exc(limit=1))
