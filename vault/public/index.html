@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>내 정보 금고</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>내 정보 금고</h1>
+      <p class="muted small">메일·비밀번호·애드센스·전자책·강의·카페 계정을 한곳에. 마스터 비밀번호로 암호화되어 저장됩니다.</p>
+    </div>
+    <div class="row" id="topActions" hidden>
+      <button id="lockBtn" type="button">잠그기</button>
+    </div>
+  </div>
+
+  <div id="viewLoading" class="panel"><p class="muted">금고를 불러오는 중…</p></div>
+
+  <div id="viewUnavailable" class="panel" hidden>
+    <h2>지금은 금고를 열 수 없어요</h2>
+    <p class="muted" id="unavailText">서버에 연결하지 못했어요. 잠시 후 새로고침해 주세요.</p>
+  </div>
+
+  <form id="viewSetup" class="panel" hidden>
+    <h2>처음 오셨네요. 마스터 비밀번호를 정해주세요</h2>
+    <p class="muted small">이 비밀번호 하나만 기억하면 나머지는 금고가 기억합니다. 모든 내용은 이 비밀번호로 내 기기에서 암호화된 뒤 서버에 저장되어, 서버 주인도 읽을 수 없습니다.</p>
+    <div class="warn"><strong>꼭 기억하세요.</strong> 마스터 비밀번호를 잊으면 아무도 복구해 드릴 수 없습니다. 종이에 적어 안전한 곳에 보관해 두세요.</div>
+    <label for="setupPw">마스터 비밀번호 (10자 이상)
+      <input id="setupPw" type="password" autocomplete="new-password" minlength="10" required></label>
+    <label for="setupPw2">한 번 더 입력
+      <input id="setupPw2" type="password" autocomplete="new-password" minlength="10" required></label>
+    <div id="setupMsg" hidden></div>
+    <div class="row end"><button class="primary" type="submit" id="setupBtn">금고 만들기</button></div>
+  </form>
+
+  <form id="viewUnlock" class="panel" hidden>
+    <h2>금고 열기</h2>
+    <label for="unlockPw">마스터 비밀번호
+      <input id="unlockPw" type="password" autocomplete="current-password" required></label>
+    <div id="unlockMsg" hidden></div>
+    <div class="row end"><button class="primary" type="submit" id="unlockBtn">열기</button></div>
+  </form>
+
+  <div id="viewMain" hidden>
+    <div class="row">
+      <input id="search" class="grow" type="search" placeholder="사이트, 아이디, 메모로 찾기" aria-label="검색">
+      <button class="primary" type="button" id="addBtn">+ 새 항목</button>
+    </div>
+    <div class="chips" id="chips" role="group" aria-label="분류"></div>
+
+    <form id="editor" class="panel editor-gap" hidden>
+      <h2 id="editorTitle">새 항목</h2>
+      <div class="grid2">
+        <label for="fName">이름 (사이트·책·강의 이름)
+          <input id="fName" required placeholder="예: 네이버 카페 ○○모임"></label>
+        <label for="fCat">분류
+          <select id="fCat"></select></label>
+      </div>
+      <div class="grid2">
+        <label for="fUser">아이디 / 이메일
+          <input id="fUser" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+        <label for="fPw">비밀번호
+          <span class="pwbox">
+            <input id="fPw" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+            <button type="button" id="genBtn" title="안전한 비밀번호 만들기">생성</button>
+          </span></label>
+      </div>
+      <label for="fUrl">주소 (선택)
+        <input id="fUrl" type="url" inputmode="url" placeholder="https://"></label>
+      <label for="fNote">메모 (선택)
+        <textarea id="fNote" placeholder="예: 가입한 메일, 구매일, 강의 수강 기한, 보안 질문 답, 애드센스 게시자 ID 등"></textarea></label>
+      <div class="row end">
+        <button type="button" id="cancelBtn">취소</button>
+        <button class="primary" type="submit" id="saveBtn">저장</button>
+      </div>
+    </form>
+
+    <div class="list" id="list"></div>
+
+    <div class="foot">
+      <div class="row">
+        <button type="button" id="backupBtn">암호화된 백업 파일 받기</button>
+        <label class="small import" for="importFile">
+          <span class="muted">백업 불러오기</span>
+          <input id="importFile" type="file" accept=".json,application/json">
+        </label>
+      </div>
+      <label for="importPw" id="importPwRow" class="small" hidden>예전 마스터 비밀번호 (비밀번호를 바꾸기 전에 받은 백업일 때만)
+        <input id="importPw" type="password" autocomplete="off"></label>
+      <p class="muted small">10분 동안 아무것도 하지 않으면 자동으로 잠깁니다. 백업 파일도 같은 마스터 비밀번호로 암호화되어 있습니다.</p>
+
+      <details class="settings">
+        <summary>마스터 비밀번호 바꾸기</summary>
+        <form id="pwForm" class="panel">
+          <label for="oldPw">지금 마스터 비밀번호
+            <input id="oldPw" type="password" autocomplete="current-password" required></label>
+          <label for="newPw">새 마스터 비밀번호 (10자 이상)
+            <input id="newPw" type="password" autocomplete="new-password" minlength="10" required></label>
+          <label for="newPw2">새 비밀번호 한 번 더
+            <input id="newPw2" type="password" autocomplete="new-password" minlength="10" required></label>
+          <div id="pwMsg" hidden></div>
+          <div class="row end"><button class="primary" type="submit" id="pwBtn">바꾸기</button></div>
+        </form>
+      </details>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>
