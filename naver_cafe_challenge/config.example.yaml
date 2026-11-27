@@ -21,6 +21,10 @@ challenge:
   count_only_posting_days: false
 
 post:
+  # draft   = 임시등록만 (직접 확인 후 발행 버튼은 내가 누름) ← 기본, 안전
+  # publish = 바로 발행
+  mode: "draft"
+
   # 사용 가능한 치환어:
   #   {challenge} 챌린지 이름   {day} 회차   {total} 총 일수
   #   {date} 2026-12-01   {date_kr} 12월 1일   {weekday} 월요일

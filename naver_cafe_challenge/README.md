@@ -5,6 +5,7 @@
 - 제목·본문 템플릿에 **날짜 / N일차**가 자동으로 들어갑니다
 - **AI(Claude)** 가 매일 다른 응원 문구를 써 줍니다 (선택)
 - `photos/` 폴더의 **인증 사진**을 자동 첨부합니다 (선택)
+- 기본은 **임시등록만** — 발행은 내가 확인하고 직접 누름 (`post.mode: publish` 로 바꾸면 바로 발행)
 - 하루에 한 번만 올라가도록 **중복 방지**, 실패하면 **화면 캡처 + 로그** 저장
 
 > ⚠️ **주의**: 브라우저 자동화 방식이라 네이버 화면이 바뀌면 동작이 멈출 수 있고,
@@ -56,6 +57,7 @@ playwright install chromium
 | `cafe.menu_id` | 올릴 게시판 번호. 게시판 클릭 시 주소의 `menuid=숫자` 또는 `/menus/숫자` |
 | `challenge.start_date` | 1일차 날짜 |
 | `challenge.total_days` | 총 일수 (지나면 자동으로 멈춤) |
+| `post.mode` | `draft` = 임시등록만 (기본) / `publish` = 바로 발행 |
 | `post.title_template` / `body_template` | 글 틀. `{day}`, `{date_kr}`, `{ai_text}` 등 치환 |
 | `ai.enabled` | AI 문구 사용 여부 |
 | `photos.enabled` | 사진 첨부 여부 |
@@ -108,10 +110,18 @@ python main.py preview
 python main.py post --dry-run
 ```
 
-실제로 한 번 올려 보기:
+실제로 한 번 임시등록 해 보기:
 
 ```bash
 python main.py post --no-delay
+```
+
+카페 글쓰기 화면 상단의 **임시등록 (숫자)** 를 눌러 저장된 글을 불러온 뒤, 확인하고 **등록** 을 누르면 발행됩니다.
+
+임시등록 없이 바로 발행하려면:
+
+```bash
+python main.py post --publish
 ```
 
 ## 5. 매일 자동 실행
@@ -158,6 +168,7 @@ python main.py post --date 2026-12-05 --force
 | `'title' 요소를 찾지 못했습니다` 등 | 네이버 화면이 바뀐 것. `logs/` 의 캡처를 보고 `uploader.py` 맨 위 `SELECTORS` 수정 |
 | 카페 ID를 못 찾음 | 카페 아무 글 주소의 `/cafes/숫자/` 숫자를 `cafe.club_id` 에 직접 입력 |
 | 캡차가 뜸 | `headless: false` 로 두고, 업로드 빈도를 줄이세요 |
+| 임시등록 버튼을 못 찾음 | `uploader.py` 의 `SELECTORS["draft"]` 에 실제 버튼 글자 추가 |
 | 올린 기록 | `state.json`, 로그는 `logs/challenge.log` |
 
 ## 파일 구성

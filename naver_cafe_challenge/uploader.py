@@ -35,11 +35,25 @@ SELECTORS = {
         "button[data-log='dot.img']",
         "button:has-text('사진')",
     ],
+    # 주의: '임시등록' 버튼과 헷갈리지 않도록 글자가 정확히 '등록'인 것만
     "submit": [
-        "a.BaseButton:has-text('등록')",
-        "button.BaseButton:has-text('등록')",
-        "button:has-text('등록')",
-        "a:has-text('등록')",
+        "a.BaseButton:text-is('등록')",
+        "button.BaseButton:text-is('등록')",
+        "button:text-is('등록')",
+        "a:text-is('등록')",
+    ],
+    "draft": [
+        "button.BaseButton:has-text('임시등록')",
+        "a.BaseButton:has-text('임시등록')",
+        "button:has-text('임시등록')",
+        "a:has-text('임시등록')",
+        "button:has-text('임시저장')",
+        "a:has-text('임시저장')",
+    ],
+    # 임시등록 후 뜨는 안내 문구
+    "draft_done": [
+        "text=/임시(등록|저장).*(되었|완료)/",
+        "text=/저장되었습니다/",
     ],
 }
 
@@ -186,7 +200,8 @@ class CafeUploader:
                 log.warning("사진 업로드 완료를 확인하지 못했습니다: %s", p.name)
             _human_pause(1.0, 2.0)
 
-    def publish(self, post: Post, dry_run: bool = False) -> str | None:
+    def publish(self, post: Post, mode: str = "draft", dry_run: bool = False) -> str | None:
+        """mode="draft" 면 임시등록만, "publish" 면 실제 발행."""
         if not self.is_logged_in():
             raise RuntimeError("로그인되어 있지 않습니다. 먼저 `python main.py login` 을 실행하세요.")
 
@@ -225,6 +240,9 @@ class CafeUploader:
                     input("브라우저에서 내용을 확인한 뒤 Enter 를 누르면 종료합니다 (글은 저장되지 않음)...")
                 return None
 
+            if mode == "draft":
+                return self._save_draft()
+
             before = self.page.url
             self._find("submit").click()
             log.info("등록 버튼 클릭, 완료 대기 중...")
@@ -240,3 +258,18 @@ class CafeUploader:
             path = self._screenshot("error")
             log.error("업로드 중 오류. 화면 캡처: %s", path)
             raise
+
+    def _save_draft(self) -> str:
+        self._find("draft").click()
+        log.info("임시등록 버튼 클릭, 저장 확인 중...")
+        try:
+            self._find("draft_done", 10)
+            log.info("✅ 임시등록 완료 (카페 글쓰기 화면의 '임시등록' 목록에서 확인 후 발행하세요)")
+        except RuntimeError:
+            # 안내 문구가 바로 사라지는 경우가 있어 실패로 보지 않고 캡처만 남김
+            path = self._screenshot("draft_check")
+            log.warning("임시등록 안내 문구를 확인하지 못했습니다. 캡처를 확인하세요: %s", path)
+        _human_pause(1.5, 2.5)  # 저장 요청이 끝날 시간
+        self._screenshot("draft_saved")
+        return "draft"
+

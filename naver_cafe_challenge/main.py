@@ -4,7 +4,8 @@
   python main.py login            # 처음 1번: 브라우저에서 직접 로그인
   python main.py preview          # 오늘 올라갈 글 미리보기 (브라우저 안 염)
   python main.py post --dry-run   # 글쓰기 화면에 입력까지만 (등록 X)
-  python main.py post             # 실제 업로드 (예약 실행용)
+  python main.py post             # 임시등록 (기본값, 예약 실행용)
+  python main.py post --publish   # 임시등록 대신 바로 발행
   python main.py post --date 2026-12-05 --force   # 특정 날짜로/중복이어도 올리기
 """
 from __future__ import annotations
@@ -72,6 +73,7 @@ def main() -> None:
     ap.add_argument("--config", default=str(BASE_DIR / "config.yaml"))
     ap.add_argument("--date", help="이 날짜 기준으로 글 생성 (YYYY-MM-DD, 기본: 오늘)")
     ap.add_argument("--dry-run", action="store_true", help="입력까지만 하고 등록 버튼은 누르지 않음")
+    ap.add_argument("--publish", action="store_true", help="임시등록 대신 바로 발행 (config 의 post.mode 무시)")
     ap.add_argument("--force", action="store_true", help="오늘 이미 올렸어도 다시 올림")
     ap.add_argument("--no-delay", action="store_true", help="랜덤 대기 없이 바로 실행")
     ap.add_argument("--headless", action="store_true", help="브라우저 창 없이 실행")
@@ -95,7 +97,7 @@ def main() -> None:
     key = today.isoformat()
 
     if args.command == "post" and not args.force and not args.dry_run and key in state["posted"]:
-        log.info("%s 은 이미 업로드했습니다: %s (다시 올리려면 --force)", key, state["posted"][key]["url"])
+        log.info("%s 은 이미 처리했습니다(%s). 다시 하려면 --force", key, state["posted"][key].get("mode", "publish"))
         return
 
     post = build_post(cfg, today, BASE_DIR, use_ai=True)
@@ -115,12 +117,17 @@ def main() -> None:
 
     from uploader import CafeUploader
 
+    mode = "publish" if args.publish else (cfg.get("post") or {}).get("mode", "draft")
+    if mode not in ("draft", "publish"):
+        sys.exit(f"post.mode 는 draft 또는 publish 여야 합니다: {mode}")
+    log.info("모드: %s", "임시등록만" if mode == "draft" else "바로 발행")
+
     with CafeUploader(cfg, BASE_DIR, headless=True if args.headless else None) as up:
-        url = up.publish(post, dry_run=args.dry_run)
+        url = up.publish(post, mode=mode, dry_run=args.dry_run)
 
     if url:
         mark_photos_used(post.photos)
-        state["posted"][key] = {"day": post.day, "title": post.title, "url": url}
+        state["posted"][key] = {"day": post.day, "title": post.title, "mode": mode, "url": url}
         save_state(state)
 
 
