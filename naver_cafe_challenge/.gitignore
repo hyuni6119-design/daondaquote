@@ -1,0 +1,8 @@
+config.yaml
+browser_profile/
+state.json
+logs/
+photos/*
+!photos/.gitkeep
+__pycache__/
+.venv/
